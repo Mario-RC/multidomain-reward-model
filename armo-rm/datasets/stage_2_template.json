@@ -1,0 +1,144 @@
+{
+  "pair_id": "S2D-000001",
+  "source_dialogue_id": "S1D-004521",
+
+  "metadata": {
+    "domain": "coherence | empathy | commonsense | multicultural",
+    "split": "train | val | test",
+    "generation_model": "gpt-5.1-batch",
+    "turn_count": 3,
+    "difficulty": "easy | medium | hard",
+    "contrast": {
+      "scope": "global | target",
+      "direction": "positive | negative",
+      "decision": "global_pass | target_pass | target_coarse_pass | global_flip_pass | target_flip_pass",
+      "intent_followed": true
+    },
+    "dimensions": {
+      "domain": ["em_emotional_awareness", "em_perspective_taking", "em_emotional_validation", "em_supportive_engagement", "em_helpful_response", "em_overall_empathy_score"],
+      "target": ["em_emotional_awareness"],
+      "decision": ["em_emotional_awareness", "em_perspective_taking"]
+    }
+  },
+
+  "evaluation": {
+    "method": "lm_judge | human | rules",
+    "stage_1_scores": {
+      "em_emotional_awareness": 0.25,
+      "em_perspective_taking": 0.30,
+      "em_emotional_validation": 0.20,
+      "em_supportive_engagement": 0.22,
+      "em_helpful_response": 0.18,
+      "em_overall_empathy_score": 0.24
+    },
+    "stage_2_scores": {
+      "em_emotional_awareness": 0.85,
+      "em_perspective_taking": 0.80,
+      "em_emotional_validation": 0.75,
+      "em_supportive_engagement": 0.78,
+      "em_helpful_response": 0.72,
+      "em_overall_empathy_score": 0.79
+    },
+    "chosen_score_source": "stage_1 | stage_2",
+    "rejected_score_source": "stage_1 | stage_2"
+  },
+
+  "messages": [
+    {"role": "user | assistant", "content": "Hi there, I had a really bad day today."},
+    {"role": "user | assistant", "content": "I'm sorry to hear that. Want to tell me what happened?"},
+    {"role": "user | assistant", "content": "My boss yelled at me even though it wasn't my fault."}
+  ],
+
+  "chosen": [
+    {"role": "user | assistant", "content": "That must have felt really unfair and frustrating..."},
+    {"role": "user | assistant", "content": "Exactly! And nobody stood up for me either."},
+    {"role": "user | assistant", "content": "That isolation makes it even harder. Would you like to talk through what happened?"}
+  ],
+
+  "rejected": [
+    {"role": "user | assistant", "content": "People get yelled at all the time; it's not a big deal."},
+    {"role": "user | assistant", "content": "It was really upsetting to me."},
+    {"role": "user | assistant", "content": "You'll get over it."}
+  ]
+}
+
+
+{
+    "pair_id": "S2D-000001",
+    "source_dialogue_id": "S1D-017808",
+    "metadata": {
+        "domain": "empathy",
+        "split": "train",
+        "generation_model": "gpt-5.1-batch",
+        "turn_count": 1,
+        "difficulty": "easy",
+        "contrast": {
+            "scope": "global",
+            "direction": "negative",
+            "decision": "global_pass",
+            "intent_followed": true
+        },
+        "dimensions": {
+            "domain": [
+                "em_emotional_awareness",
+                "em_emotional_validation",
+                "em_perspective_taking",
+                "em_supportive_engagement",
+                "em_helpful_response",
+                "em_overall_empathy_score"
+            ],
+            "target": [],
+            "decision": [
+                "em_emotional_awareness",
+                "em_perspective_taking"
+            ]
+        }
+    },
+    "evaluation": {
+        "method": "lm_judge",
+        "stage_1_scores": {
+            "em_emotional_awareness": 1.0,
+            "em_emotional_validation": 1.0,
+            "em_perspective_taking": 0.75,
+            "em_supportive_engagement": 1.0,
+            "em_helpful_response": 0.75,
+            "em_overall_empathy_score": 1.0
+        },
+        "stage_2_scores": {
+            "em_emotional_awareness": 0.5,
+            "em_emotional_validation": 0.4,
+            "em_perspective_taking": 0.5,
+            "em_supportive_engagement": 0.4,
+            "em_helpful_response": 0.4,
+            "em_overall_empathy_score": 0.44
+        },
+        "chosen_score_source": "stage_1",
+        "rejected_score_source": "stage_2"
+    },
+    "messages": [
+        {
+            "role": "user",
+            "content": "A new pizza joint is opening up here!"
+        },
+        {
+            "role": "assistant",
+            "content": "WOW that's always a good news! i do love my pizza_comma_ and  i am guessing you do too!"
+        },
+        {
+            "role": "user",
+            "content": "Yes_comma_ it will be New York style. I can't wait to go eat there!"
+        }
+    ],
+    "chosen": [
+        {
+            "role": "assistant",
+            "content": "oh god! make sure you post a lot of pictures and give updates on the taste! you must be so excited"
+        }
+    ],
+    "rejected": [
+        {
+            "role": "assistant",
+            "content": "Nice. New York style is pretty popular. Let me know how the place actually turns out once you’ve tried it."
+        }
+    ]
+}

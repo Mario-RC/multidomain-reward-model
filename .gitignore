@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# local envs
+venv/
+.venv/
+armorm/
+
+# generated artifacts
+armo-rm/data/
+armo-rm/logs/
+*.safetensors
+*.pt
+
+# large raw datasets (keep templates/configs only)
+armo-rm/datasets/stage_1.jsonl
+armo-rm/datasets/stage_2.jsonl

@@ -1,0 +1,61 @@
+"""
+Format:
+If no score is available for a dimension, set it to null.
+
+Evaluation:
+Stage 1 → ≥60% win rate in val
+Stage 2 → ≥75% in val in-domain = good. 78–82% = solid. ≥85% = very strong (depending on domain).
+
+Rules:
+Only needed message and chosen/rejected, the scores are not mandatory.
+The chosen/rejected must share some dimensions and differ in others.
+Mix pairs that differ subtly in one dimension (e.g., empathy) and pairs that differ in several.
+Include multi-turn pairs to teach trajectory criteria (entity tracking, adjacency). Message number of turns: 1-turns 15%, 3-turns 40%, 5-turns 30%, 7-turns 15%. Chosen/rejected must be same turns length.
+If the rejected usually have better stage 1 scores than chosen, the model will learn wrongly.
+Mismatch: 55–65% → reasonable alignment between different datasets, < 55% = low → noticeable mismatch. Spearman 0.3–0.5 = moderate; <0.2 = low → noticeable mismatch.
+The dialogues should be different from stage 1.
+To calculate which one is the chosen/rejected, must use a different criterion than stage 1, but related (e.g. heads: coherence, empathy) to avoid mismatch.
+"""
+
+{
+  "stage_2_dialogue_id": "YYY-nnnnnn", // ID for stage 2
+  // "stage_1_dialogue_id": "XXX-nnnnnn", // Reference to original stage 1 dialogue
+  // source of the dialogue, add more if needed
+  "meta": {
+    "source": "common_sense|multicultural|social",
+    "split": "train|dev|test"
+  },
+  // metadata about the annotation for trazability
+  "annotations": {
+    "annotator_id": null,
+    "method": "human|llm_judge",
+    "model_judge": null,
+    "notes": null
+  },
+  // shared prefix: common turns to chosen and rejected
+  // ideally ends in USER turn (so the model has to predict the next assistant turn)
+  "messages": [
+    { "role": "user", "content": "Hi there, I had a really bad day today." },
+    { "role": "assistant", "content": "I'm sorry to hear that. Want to tell me what happened?" },
+    { "role": "user", "content": "My boss yelled at me even though it wasn’t my fault." }
+  ],
+  // differing turns: chosen responses
+  "chosen": [
+    { "role": "assistant", "content": "That must have felt unfair. I’m here for you." },
+    { "role": "user", "content": "Thanks, I appreciate it." },
+    { "role": "assistant", "content": "Do you want to unpack what happened so we can plan next steps?" }
+  ],
+  // differing turns: rejected responses
+  "rejected": [
+    { "role": "assistant", "content": "People get yelled at all the time; it’s not a big deal." },
+    { "role": "user", "content": "It was really upsetting to me." },
+    { "role": "assistant", "content": "You’ll get over it." }
+  ],
+  // Optional: If you pre-calculate Stage 1 targets to speed up training
+  "chosen_objectives": null, // or a dictionary with your heads if you precompute them
+  "rejected_objectives": null, // idem
+  // Optional for filtering
+  "preference": "chosen_over_rejected",
+  "chosen_score": null, // Overall score for chosen response (0.0-1.0)
+  "rejected_score": null, // Overall score for rejected response (0.0-1.0)
+},

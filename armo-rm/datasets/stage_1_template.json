@@ -1,0 +1,240 @@
+{
+  "examples": [
+    {
+      "dialogue_id": "S1D-000001",
+      "source_id": "co-abc123def456",
+      "domain": "coherence | empathy | commonsense | multicultural",
+      "split": "train | val | test",
+      "messages": [
+        {"role": "user | assistant", "content": "I thought athletes were tested for drugs."},
+        {"role": "user | assistant", "content": "What kind of drugs?"},
+        {"role": "user | assistant", "content": "The results only came back after the race."},
+        {"role": "user | assistant", "content": "There's never a good reason to take drugs."}
+      ],
+      "scores": {
+        "co_topic_coherence": 0.75,
+        "co_discourse_structure": 0.50,
+        "co_logical_consistency": 0.75,
+        "co_temporal_causal_coherence": 0.50,
+        "co_mutual_grounding": 0.75,
+        "co_overall_coherence_score": 0.75,
+
+        "em_emotional_awareness": null,
+        "em_emotional_validation": null,
+        "em_perspective_taking": null,
+        "em_supportive_engagement": null,
+        "em_helpful_response": null,
+        "em_overall_empathy_score": null,
+
+        "cs_causality": null,
+        "cs_consistency": null,
+        "cs_reaction": null,
+        "cs_desire": null,
+        "cs_coherence": null,
+        "cs_empathy": null,
+
+        "mu_cultural_value": null,
+        "mu_cultural_specificity": null,
+        "mu_naturalness": null,
+        "mu_coherence": null,
+        "mu_empathy": null
+      },
+      "domain_metadata": null
+    },
+
+    {
+      "dialogue_id": "S1D-000004",
+      "source_id": "mu-ZAF-000973",
+      "domain": "coherence | empathy | commonsense | multicultural",
+      "split": "train | val | test",
+      "messages": [
+        {"role": "user | assistant", "content": "In my country we always greet elders first."},
+        {"role": "user | assistant", "content": "That's interesting, we have similar customs."}
+      ],
+      "scores": {
+        "co_topic_coherence": null,
+        "co_discourse_structure": null,
+        "co_logical_consistency": null,
+        "co_temporal_causal_coherence": null,
+        "co_mutual_grounding": null,
+        "co_overall_coherence_score": null,
+
+        "em_emotional_awareness": null,
+        "em_emotional_validation": null,
+        "em_perspective_taking": null,
+        "em_supportive_engagement": null,
+        "em_helpful_response": null,
+        "em_overall_empathy_score": null,
+
+        "cs_causality": null,
+        "cs_consistency": null,
+        "cs_reaction": null,
+        "cs_desire": null,
+        "cs_coherence": null,
+        "cs_empathy": null,
+
+        "mu_cultural_value": 0.85,
+        "mu_cultural_specificity": 0.70,
+        "mu_naturalness": 0.80,
+        "mu_coherence": 0.90,
+        "mu_empathy": 0.75
+      },
+      "domain_metadata": {
+        "country_1": "South Africa",
+        "country_2": "Poland",
+        "demographics_1": "{'name': 'Brandon Thomas', 'age': 35, 'gender': 'Male', 'from': 'Johannesburg', ...}",
+        "demographics_2": "{'name': 'Grzegorz Krawczyk', 'age': 44, 'gender': 'male', 'from': 'Katowice', ...}",
+        "statement_original": "police or military interference with people's private life occurs not at all frequently",
+        "statement_cultural": "In my suburb the cops stick to actual crime and I like it that way.",
+        "situation": "Brandon, visiting Poland, is staying with Grzegorz. Late at night Grzegorz's son comes home shaken after police stopped him.",
+        "cultural_reasoning_1": "Brandon assumes competent police are neutral infrastructure. Hearing fear, he feels irritated.",
+        "cultural_reasoning_2": "Grzegorz grew up hearing about neighbours beaten under communism. He distrusts uniforms.",
+        "arousal_reasoning": "Neither can withdraw without damaging work prospects. Brandon's dismissal hits Grzegorz's parenting identity.",
+        "arousal_score": "4",
+        "social_norms_1": "Water conservation as civic duty. ANC legacy creates complex loyalty. Multilingual greetings show respect.",
+        "social_norms_2": "Hard work as inherited obligation. Expert opinions valued over populism. Shared suffering bonds people.",
+        "prejudices_1": "Poland seen as highly educated, strong intellectual tradition.",
+        "prejudices_2": "South Africa seen as failing infrastructure, AIDS crisis, ANC mismanagement."
+      }
+    }
+  ]
+},
+{
+    "dialogue_id": "S1D-000001",
+    "source_id": "co-3d704c104b7c0197",
+    "domain": "coherence",
+    "messages": [
+        {"role": "user","content": "I don't like the color of the walls in the new house ."},
+        {"role": "assistant","content": "I know , it's too bad ."},
+        {
+            "role": "user",
+            "content": "Why did they choose that color ?"
+        },
+        {
+            "role": "assistant",
+            "content": "I don't know , you'd have to ask them ."
+        },
+        {
+            "role": "user",
+            "content": "I wonder if they'll change it ."
+        },
+        {
+            "role": "assistant",
+            "content": "I hope they do ."
+        },
+        {
+            "role": "user",
+            "content": "Do you like the location ?"
+        },
+        {
+            "role": "assistant",
+            "content": "It's not bad , I guess ."
+        },
+        {
+            "role": "user",
+            "content": "Have you seen the kitchen ?"
+        },
+        {
+            "role": "assistant",
+            "content": "Yes , it's nice ."
+        },
+        {
+            "role": "user",
+            "content": "Did you try the food at the party ?"
+        },
+        {
+            "role": "assistant",
+            "content": "I didn't go to the party ."
+        },
+        {
+            "role": "user",
+            "content": "Why not ?"
+        },
+        {
+            "role": "assistant",
+            "content": "I had to work ."
+        },
+        {
+            "role": "user",
+            "content": "That's too bad ."
+        },
+        {
+            "role": "assistant",
+            "content": "Yeah , I know ."
+        }
+    ],
+    "split": "train",
+    "scores": {
+        "co_topic_coherence": 1.0,
+        "co_discourse_structure": 1.0,
+        "co_logical_consistency": 1.0,
+        "co_temporal_causal_coherence": 1.0,
+        "co_mutual_grounding": 1.0,
+        "co_overall_coherence_score": 1.0,
+        "em_emotional_awareness": null,
+        "em_emotional_validation": null,
+        "em_perspective_taking": null,
+        "em_supportive_engagement": null,
+        "em_helpful_response": null,
+        "em_overall_empathy_score": null,
+        "cs_causality": null,
+        "cs_consistency": null,
+        "cs_reaction": null,
+        "cs_desire": null,
+        "cs_coherence": null,
+        "cs_empathy": null,
+        "mu_cultural_value": null,
+        "mu_cultural_specificity": null,
+        "mu_naturalness": null,
+        "mu_coherence": null,
+        "mu_empathy": null
+    },
+    "domain_metadata": null
+}
+
+
+
+{
+    "stage_1_dialogue_id": "MDO-000001",
+    "source_id": "co-0ca82b9dc9ee0ac3",
+    "source": "coherence",
+    "messages": [
+        {"role": "user", "content": "How do I want to come on my boat with me?"},
+        {"role": "assistant", "content": "I'm 35, sure I can bring my dog."},
+        {"role": "user", "content": "I'm sure I'm 70. We can fish."},
+        {"role": "assistant", "content": "I like fish. I speak Japanese and teach it and drawing classes."},
+        {"role": "user", "content": "Do you want to move my cabin with me?"},
+        {"role": "assistant", "content": "OK, I'm single, but I have an accent and some words that trouble me."},
+        {"role": "user", "content": "I don't judge you. You may be my friend."},
+        {"role": "assistant", "content": "Thank you. I can teach them Japanese and we can eat fish."},
+        {"role": "user", "content": "I really love that, did you teach me as well?"},
+        {"role": "assistant", "content": "It's fun. My dog even understands Japanese."},
+        {"role": "user", "content": "Your dogs understand English too?"},
+        {"role": "assistant", "content": "No, he too has a japanese name, he won, do you like it?"},
+        {"role": "user", "content": "I like it. Kinda like I won you."},
+        {"role": "assistant", "content": "Ha, I like you, how many grandkids?"}
+    ],
+    "co_discourse_structure": 0.5,
+    "co_logical_consistency": 0.75,
+    "co_mutual_grounding": 0.5,
+    "co_overall_coherence_score": 0.5,
+    "co_temporal_causal_coherence": 0.5,
+    "co_topic_coherence": 0.75,
+    "cs_causality": null,
+    "cs_coherence": null,
+    "cs_consistency": null,
+    "cs_desire": null,
+    "cs_empathy": null,
+    "cs_reaction": null,
+    "em_emotional_awareness": null,
+    "em_emotional_validation": null,
+    "em_helpful_response": null,
+    "em_overall_empathy_score": null,
+    "em_perspective_taking": null,
+    "em_supportive_engagement": null,
+    "mu_coherence": null,
+    "mu_cultural_specificity": null,
+    "mu_cultural_value": null,
+    "mu_empathy": null,
+    "mu_naturalness": null
+}

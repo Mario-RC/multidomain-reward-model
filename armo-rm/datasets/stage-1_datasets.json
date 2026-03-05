@@ -1,0 +1,78 @@
+"""
+If no score is available for a dimension, set it to null
+"""
+{
+  "stage_1_dialogue_id": "XXX-nnnnnn", // ID for stage 1
+  "source": "common_sense|multicultural|social", // source of the dialogue
+  // messages in the dialogue
+  "messages": [
+    {"role": "system", "content": ""},
+    {"role": "user", "content": "Hi there, I had a really bad day today."},
+    {"role": "assistant", "content": "I'm sorry to hear that. Want to tell me what happened?"},
+    {"role": "user", "content": "My boss yelled at me even though it wasn’t my fault."},
+    {"role": "assistant", "content": "That must have felt unfair. It’s hard when you try your best and still get blamed."},
+    {"role": "user", "content": "Yeah, exactly! I just don't know what to do."},
+    {"role": "assistant", "content": "Maybe you’re overreacting. People get yelled at all the time."},
+    {"role": "user", "content": "No, I think it’s more than that. I feel really upset."},
+    {"role": "assistant", "content": "I understand. It’s okay to feel upset when things like this happen."}
+  ],
+  // scores for different dimensions
+  "cs-coherence": 0.0-1.0,
+  "cs-empathy": 0.0-1.0,
+  "cs-attributes-xreact": 0.0-1.0,
+  "cs-attributes-oreact": 0.0-1.0,
+  "mc-coherence": 0.0-1.0,
+  "mc-empathy": 0.0-1.0,
+  "mc-human-dim-1": 0.0-1.0,
+  "mc-human-dim-2": 0.0-1.0,
+  "mc-human-dim-3": 0.0-1.0,
+  "mc-human-dim-4": 0.0-1.0,
+  "mc-human-dim-5": 0.0-1.0,
+  "mc-human-dim-overall": 0.0-1.0,
+  "so-coherence-turn_follow": 0.0-1.0,
+  "so-coherence-entity_track": 0.0-1.0,
+  "so-coherence-logic_flow": 0.0-1.0,
+  "so-coherence-adjacency": 0.0-1.0,
+  "so-coherence-topic_focus": 0.0-1.0,
+  "so-coherence-world_plaus": 0.0-1.0,
+  "so-coherence-overall": 0.0-1.0,
+  "so-empathy-1": 0.0-1.0,
+  "so-empathy-2": 0.0-1.0,
+  "so-empathy-3": 0.0-1.0,
+  "so-empathy-4": 0.0-1.0,
+},
+
+// sample Stage 1 entry for the common_sense source
+{
+  "stage_1_dialogue_id": "XXX-nnnnnn",
+  "source": "common_sense",
+  "messages": [
+    {"role": "user", "content": "Hi there, I had a really bad day today."},
+    {"role": "assistant", "content": "I'm sorry to hear that. Want to tell me what happened?"},
+    {"role": "user", "content": "My boss yelled at me even though it wasn’t my fault."},
+    {"role": "assistant", "content": "That must have felt unfair. It’s hard when you try your best and still get blamed."},
+    {"role": "user", "content": "Yeah, exactly! I just don't know what to do."},
+    {"role": "assistant", "content": "Maybe you’re overreacting. People get yelled at all the time."},
+    {"role": "user", "content": "No, I think it’s more than that. I feel really upset."},
+    {"role": "assistant", "content": "I understand. It’s okay to feel upset when things like this happen."}
+  ],
+  "cs-coherence": 0.82,
+  "cs-empathy": 0.91,
+  "cs-attributes-xreact": 0.77,
+  "cs-attributes-oreact": 0.68,
+  
+  "mc-coherence": null,
+  "mc-empathy": null,
+  "mc-human": null,
+  "so-coherence-turn_follow": null,
+  "so-coherence-entity_track": null,
+  "so-coherence-logic_flow": null,
+  "so-coherence-adjacency": null,
+  "so-coherence-topic_focus": null,
+  "so-coherence-world_plaus": null,
+  "so-coherence-overall": null,
+  "so-empathy-1": null,
+  "so-empathy-2": null,
+  "so-empathy-3": null,
+  "so-empathy-4": null
+},
