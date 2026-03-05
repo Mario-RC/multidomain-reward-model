@@ -89,6 +89,26 @@ This version uses **23 custom attributes** in `stage-1_prepare.py` and `stage-1_
 
 Base script: `armorm.sh`
 
+## Quickstart (3 commands)
+
+> Assumes you run from `multidomain_model/armo-rm` and already have your local files prepared:
+> - Stage 1 file: `<PATH_STAGE1_JSONL>`
+> - Stage 2 pairwise file: `<PATH_STAGE2_JSONL>`
+
+```bash
+pip install -r ../requirements.txt
+```
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python3 stage-1_prepare.py --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 --dataset_path <PATH_STAGE1_JSONL> --output_dataset_name mdo --n_shards 1 --shard_idx 1 --device 0 && \
+CUDA_VISIBLE_DEVICES=0 python3 stage-1_train.py --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 --dataset_name mdo
+```
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python3 stage-2_prepare.py --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 --model_family llama3 --dataset_path <PATH_STAGE2_JSONL> --dataset_split train --n_shards 1 --shard_idx 1 --device 0 && \
+CUDA_VISIBLE_DEVICES=0 python3 stage-2_train.py --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 --model_family llama3 --multi_objective_dataset mdo --preference_dataset stage_2-train --reference_dataset RLHFlow/UltraFeedback-preference-standard --device 0
+```
+
 ### Stage 1 prepare
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 stage-1_prepare.py \
