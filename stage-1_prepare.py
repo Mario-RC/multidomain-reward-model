@@ -271,7 +271,9 @@ for example in tqdm(ds, desc=f"Shard {args.shard_idx}/{args.n_shards} Processing
     try:
         conv_formatted = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=False
-        ).replace(tokenizer.bos_token, "")
+        )
+        if tokenizer.bos_token is not None:
+            conv_formatted = conv_formatted.replace(tokenizer.bos_token, "")
     except Exception:
         skipped_formatting_tokenization += 1
         continue

@@ -325,7 +325,8 @@ def main():
         sys.exit(1)
 
     # Resolve reference_dataset_name (fallback: preference_dataset_name).
-    if args.reference_dataset_name is None:
+    # Pass --reference_dataset_name null to explicitly use preference_dataset_name.
+    if args.reference_dataset_name is None or args.reference_dataset_name.lower() == "null":
         args.reference_dataset_name = args.preference_dataset_name
         if rank == 0:
             print(f"NOTE: No reference_dataset_name specified. Using preference_dataset_name ({args.preference_dataset_name}) for verbosity debiasing.")

@@ -10,6 +10,7 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
+from scipy.stats import pearsonr, spearmanr
 from safetensors.torch import load_file
 from argparse import ArgumentParser
 import traceback  # For error logging
@@ -220,10 +221,37 @@ if df_valid_results.empty:
 best_indices = df_valid_results.groupby("attribute")["loss"].idxmin()
 best_alphas = df_valid_results.loc[best_indices]
 
-print("Best alphas selected:")
+print("Best alphas selected (with validation correlations):")
+print(f"  {'Attribute':<45} {'Alpha':>8} {'Val MSE':>10} {'Pearson':>10} {'Spearman':>10} {'N_val':>8}")
+print(f"  {'-'*45} {'-'*8} {'-'*10} {'-'*10} {'-'*10} {'-'*8}")
 for _, row in best_alphas.iterrows():
     attr_idx = int(row['attribute'])
-    print(f"  Attribute {attr_idx} ({attributes[attr_idx]}): Best alpha = {row['alpha']}, Min Val Loss = {row['loss']:.4f}")
+    best_alpha = row['alpha']
+    attribute_name = attributes[attr_idx]
+
+    y_train_attr = Y_train[:, attr_idx]
+    y_val_attr = Y_val[:, attr_idx]
+    valid_mask_train = ~np.isnan(y_train_attr)
+    valid_mask_val = ~np.isnan(y_val_attr)
+
+    X_train_f = X_train[valid_mask_train]
+    y_train_f = y_train_attr[valid_mask_train]
+    X_val_f = X_val[valid_mask_val]
+    y_val_f = y_val_attr[valid_mask_val]
+
+    n_val = len(y_val_f)
+    pearson_r = np.nan
+    spearman_r = np.nan
+
+    if n_val >= 2 and not np.isnan(best_alpha):
+        clf_tmp = Ridge(alpha=best_alpha, fit_intercept=False, solver='cholesky')
+        clf_tmp.fit(X_train_f, y_train_f)
+        pred_val = clf_tmp.predict(X_val_f)
+        if np.std(y_val_f) > 0 and np.std(pred_val) > 0:
+            pearson_r = pearsonr(y_val_f, pred_val)[0]
+            spearman_r = spearmanr(y_val_f, pred_val)[0]
+
+    print(f"  {attribute_name:<45} {best_alpha:>8.1f} {row['loss']:>10.4f} {pearson_r:>10.4f} {spearman_r:>10.4f} {n_val:>8}")
 
 # ---------------------------
 # Fit final models with best alphas

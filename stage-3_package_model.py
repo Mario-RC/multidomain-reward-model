@@ -57,11 +57,17 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
         or stage3_cfg.get("preference_dataset_name")
         or stage2_cfg.get("preference_dataset_name")
     )
-    reference_base = (
-        (getattr(args, "reference_dataset_name", None) if args else None)
-        or stage3_cfg.get("reference_dataset_name")
-        or preference_base
-    )
+    _ref_cli = (getattr(args, "reference_dataset_name", None) if args else None)
+    if _ref_cli and _ref_cli.lower() == "null":
+        # CLI explicitly said "null" → use preference_base, skip yaml.
+        reference_base = preference_base
+    elif _ref_cli:
+        reference_base = _ref_cli
+    else:
+        reference_base = (
+            stage3_cfg.get("reference_dataset_name")
+            or preference_base
+        )
 
     stage1_weights_path = os.path.join(
         "model", "regression_weights", f"{model_name}_{multi_objective_dataset_name}.pt"
