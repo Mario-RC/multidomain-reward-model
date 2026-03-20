@@ -53,7 +53,8 @@ CUDA_VISIBLE_DEVICES=0 python3 stage-2_train.py \
 --model_family llama3 \
 --multi_objective_dataset_name Multi-Domain-Data-Scoring \
 --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
---reference_dataset_name UltraFeedback-preference-standard \
+--reference_dataset_name null \
+--debiasing_dim -1 \
 --dataset_split train \
 --eval_reward_bench \
 --device 0
@@ -65,7 +66,7 @@ CUDA_VISIBLE_DEVICES=0 python3 stage-3_package_model.py \
 --model_family llama3 \
 --multi_objective_dataset_name Multi-Domain-Data-Scoring \
 --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
---reference_dataset_name UltraFeedback-preference-standard \
+--reference_dataset_name null \
 --output_model_name multi-domain-rm-llama-3-8b-it
 
 ##########################################
@@ -77,6 +78,17 @@ CUDA_VISIBLE_DEVICES=0 python3 evaluate.py \
 ### predict ###
 CUDA_VISIBLE_DEVICES=0 python3 predict.py \
 --model_name multi-domain-rm-llama-3-8b-it
+
+##########################################
+### analyze attribute correlations ###
+CUDA_VISIBLE_DEVICES=0 python3 analyze_correlations.py \
+--dataset_path data/Multi-Domain-Data-Scoring.jsonl \
+--threshold 0.5
+
+##########################################
+### compare models ###
+CUDA_VISIBLE_DEVICES=0 python3 compare_models.py \
+--model_parent_dir model
 
 ##########################################
 ### evaluate baseline (no regression) ###

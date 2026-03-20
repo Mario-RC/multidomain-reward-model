@@ -9,8 +9,6 @@ The goal is to train a reward model in three stages:
 1. **Stage 1 (Multi-objective regression):** Extract embeddings from conversations and adjust weights per attribute.
 2. **Stage 2 (Gating network):** Learn to combine the objectives into a final preference score.
 3. **Stage 3 (Packaging):** Merge Stage 1 regression weights and Stage 2 gating weights into a final packaged reward model for inference.
-4. **Evaluate:** Inspect global reward score and top contributing attributes.
-5. **Predict:** Compare candidate responses with the packaged reward model.
 
 ---
 
@@ -158,11 +156,20 @@ python3 stage-2_train.py \
   --model_family llama3 \
   --multi_objective_dataset_name Multi-Domain-Data-Scoring \
   --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
-  --reference_dataset_name UltraFeedback-preference-standard \
+  --reference_dataset_name null \
+  --debiasing_dim -1 \
   --dataset_split train \
   --eval_reward_bench \
   --device 0
 ```
+
+> **Reference dataset and `debiasing_dim`:** The reference dataset is only used when `debiasing_dim >= 0`. If `debiasing_dim` is `-1` (disabled), the reference dataset will **not** be loaded or used, even if provided.
+>
+> `debiasing_dim` points to any attribute dimension whose influence you want to decorrelate from the rest. For each other dimension *d*, it finds the smallest penalty *p* such that `adjusted_d = d - p * target_dim` has a Spearman correlation with the target dimension below `corr_threshold`. The result is a `reward_transform_matrix` that subtracts the leaking influence of the chosen dimension before the gating network combines scores.
+>
+> Examples:
+> - In ArmoRM's original setup, `debiasing_dim=4` pointed to `helpsteer-verbosity` to prevent longer responses from inflating all reward scores.
+> - In a multi-domain setup, you could set `debiasing_dim` to a dominant dimension (e.g. a coherence or cultural attribute) if you observe it correlating too strongly with others in the reference dataset.
 
 ### Stage 3 Packaging Model
 ```bash
@@ -171,9 +178,10 @@ python3 stage-3_package_model.py \
   --model_family llama3 \
   --multi_objective_dataset_name Multi-Domain-Data-Scoring \
   --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
-  --reference_dataset_name UltraFeedback-preference-standard \
+  --reference_dataset_name null \
   --output_model_name multi-domain-rm-llama-3-8b-it
 ```
+> `--reference_dataset_name` must match the value used during Stage 2 training so the correct checkpoint file is found. Pass `null` if Stage 2 was trained without a reference dataset.
 
 ### Evaluate the packaged model
 ```bash
@@ -186,6 +194,45 @@ python3 evaluate.py \
 python3 predict.py \
   --model_name multi-domain-rm-llama-3-8b-it
 ```
+
+### Analyze attribute correlations
+
+Inspect inter-attribute and attribute-vs-length correlations in the scoring data. Helps decide whether `--debiasing_dim` is needed and which dimension to target.
+
+```bash
+python3 analyze_correlations.py
+python3 analyze_correlations.py --threshold 0.3   # stricter threshold
+```
+
+Output sections:
+- **Attribute vs response length** — Spearman correlation between each attribute and total assistant response length (characters). Flags attributes where longer responses systematically score higher/lower.
+- **Inter-attribute correlations** — Pairwise Spearman between all attributes that share non-null rows (within-domain only, since cross-domain scores are null).
+- **Dimension dominance summary** — Which attributes appear in the most high-correlation pairs (candidates for `--debiasing_dim`).
+- **Length bias warning** — Attributes whose length correlation exceeds the threshold.
+
+### Compare models
+
+Evaluate all packaged models and produce side-by-side comparison tables.
+
+```bash
+# Evaluate all models in model/ and generate tables:
+python3 compare_models.py
+
+# Quick test with 50 samples:
+python3 compare_models.py --max_samples 50
+
+# Re-print tables from cached results (no GPU needed):
+python3 compare_models.py --cached
+
+# Compare specific models only:
+python3 compare_models.py --models multi-domain-rm-llama-3-8b-it multi-domain-rm-gemma-2-9b-it
+```
+
+Results are saved as JSON in `results/<model_name>.json`. Output tables include:
+- **Preference accuracy** — Overall, per-domain, per-difficulty, and mean margin.
+- **Scoring regression** — Spearman/Pearson/MSE per domain and per attribute.
+- **Global score distribution** — mean/std/min/max of the final scalar reward.
+- **Markdown summary** — Copy-paste ready tables for documentation.
 
 ### Evaluate baseline (no regression)
 
@@ -221,8 +268,12 @@ python3 stage-2_train.py --config_path config.yaml
 python3 stage-3_package_model.py --config_path config.yaml
 python3 evaluate.py --config_path config.yaml
 python3 predict.py --config_path config.yaml
+python3 analyze_correlations.py --config_path config.yaml
+python3 compare_models.py --config_path config.yaml
 python3 evaluate_baseline.py --config_path config.yaml
 ```
+
+---
 
 ## Model Directory Tree
 

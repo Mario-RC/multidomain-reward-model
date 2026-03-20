@@ -73,7 +73,7 @@ stage_2_train:
   weight_decay: 0.0
   n_steps: 2000
   batch_size: 1024
-  verbosity_dim: -1  # Disabled: multi-domain attributes have no verbosity dimension
+  debiasing_dim: -1  # Disabled: set to the attribute index to decorrelate from
   corr_threshold: 0.03
   logit_scale: 1.0
   temperature: 10.0
@@ -102,6 +102,21 @@ inference:
   model_parent_dir: model
   model_name: multi-domain-rm-llama-3-8b-it
   model_path: null
+
+
+# --- Analyze attribute correlations ---
+
+analyze_correlations:
+  dataset_path: data/Multi-Domain-Data-Scoring.jsonl
+  threshold: 0.5
+
+# --- Compare models ---
+
+compare_models:
+  model_parent_dir: model
+  results_dir: results
+  max_samples: null
+  max_length: 4096
 
 
 # --- Baseline evaluation ---
