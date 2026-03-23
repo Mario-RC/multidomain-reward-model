@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# local envs
+venv/
+.venv/
+armorm/
+
+# generated artifacts
+armo-rm/data/
+armo-rm/logs/
+model/
+logs/
+*.safetensors
+*.pt
+
+# local model-specific scripts (only mdorm.sh is tracked)
+mdorm_*.sh
+
+# large raw data files (keep templates/configs only)
+data/Multi-Domain-Data-Scoring.jsonl
+data/Multi-Domain-Data-Preference-Pairs.jsonl

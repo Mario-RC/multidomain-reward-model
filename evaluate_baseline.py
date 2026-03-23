@@ -625,6 +625,8 @@ def main() -> None:
             print("No preference test records found.")
         else:
             if args.max_samples and args.max_samples < len(pref_records):
+                random.seed(42)
+                random.shuffle(pref_records)
                 pref_records = pref_records[:args.max_samples]
             results["preference"] = evaluate_preference_generative(model, tokenizer, pref_records, device, args.max_gen_tokens)
 
@@ -680,6 +682,8 @@ def main() -> None:
             print("No scoring test records found.")
         else:
             if args.max_samples and args.max_samples < len(scoring_records):
+                random.seed(42)
+                random.shuffle(scoring_records)
                 scoring_records = scoring_records[:args.max_samples]
             results["scoring"] = evaluate_scoring(model, tokenizer, scoring_records, device, args.max_length,
                                                   pad_token_id, no_regression, reg_weight)
@@ -691,6 +695,8 @@ def main() -> None:
             print("No preference test records found.")
         else:
             if args.max_samples and args.max_samples < len(pref_records):
+                random.seed(42)
+                random.shuffle(pref_records)
                 pref_records = pref_records[:args.max_samples]
             results["preference"] = evaluate_preference(model, tokenizer, pref_records, device, args.max_length, pad_token_id)
     elif not args.skip_preference and not no_regression:

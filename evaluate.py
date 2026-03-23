@@ -7,6 +7,7 @@ Two evaluation modes:
 
 import json
 import os
+import random
 
 import numpy as np
 import torch
@@ -115,6 +116,8 @@ def evaluate_scoring(model, tokenizer, data_path, device, max_length, max_sample
         print(f"No test records found in {data_path}")
         return {}
     if max_samples and max_samples < len(records):
+        random.seed(42)
+        random.shuffle(records)
         records = records[:max_samples]
 
     print(f"\n{'=' * 70}")
@@ -241,6 +244,8 @@ def evaluate_preference(model, tokenizer, data_path, device, max_length, max_sam
         print(f"No test records found in {data_path}")
         return {}
     if max_samples and max_samples < len(records):
+        random.seed(42)
+        random.shuffle(records)
         records = records[:max_samples]
 
     print(f"\n{'=' * 70}")
