@@ -56,7 +56,7 @@ CUDA_VISIBLE_DEVICES=0 python3 stage-2_train.py \
   --reference_dataset_name null \
   --debiasing_dim -1 \
   --dataset_split train \
-  --eval_reward_bench \
+  --eval reward-bench \
   --device 0
 
 ##########################################

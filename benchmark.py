@@ -48,8 +48,8 @@ MODEL_COLORS = ["#2196F3", "#FF5722", "#4CAF50", "#9C27B0", "#FF9800", "#00BCD4"
 def discover_models(model_parent_dir="model"):
     """Auto-discover model directories (packaged models and baselines).
 
-    A model is any subdirectory that has either config.json (packaged model)
-    or results/eval.json (baseline evaluated model).
+    A model is any subdirectory that has config.json (packaged model),
+    results/eval.json, or results/eval_baseline.json.
     """
     models = []
     if not os.path.isdir(model_parent_dir):
@@ -59,8 +59,9 @@ def discover_models(model_parent_dir="model"):
         if not os.path.isdir(candidate):
             continue
         has_config = os.path.isfile(os.path.join(candidate, "config.json"))
-        has_results = os.path.isfile(os.path.join(candidate, "results", "eval.json"))
-        if has_config or has_results:
+        has_eval = os.path.isfile(os.path.join(candidate, "results", "eval.json"))
+        has_baseline = os.path.isfile(os.path.join(candidate, "results", "eval_baseline.json"))
+        if has_config or has_eval or has_baseline:
             models.append(name)
     return models
 

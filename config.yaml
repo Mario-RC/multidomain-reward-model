@@ -67,7 +67,8 @@ stage_2_train:
   preference_dataset_name: Multi-Domain-Data-Preference-Pairs
   reference_dataset_name: null
   dataset_split: train
-  eval_reward_bench: true
+  eval: reward-bench
+  eval_split: filtered
   device: "0"
   learning_rate: 0.001
   weight_decay: 0.0

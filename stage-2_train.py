@@ -264,7 +264,8 @@ def main():
     parser.add_argument("--debiasing_dim", type=int, default=-1, help="Index (0-based) of the attribute dimension to decorrelate from all others. Set to -1 to disable debiasing.")
     parser.add_argument("--corr_threshold", type=float, default=0.03, help="Maximum allowed absolute Spearman correlation for debiasing")
     parser.add_argument("--model_family", type=str, default="llama3", choices=["llama3", "gemma2", "qwen3", "auto"], help="Model family for token pattern matching during embedding extraction (if applicable, less relevant here)")
-    parser.add_argument("--eval_reward_bench", action="store_true", help="Evaluate on RewardBench after training (requires RewardBench embeddings)")
+    parser.add_argument("--eval", type=str, default=None, help="Eval dataset name (e.g. reward-bench). Requires embeddings from stage-2_prepare.")
+    parser.add_argument("--eval_split", type=str, default="filtered", help="Split suffix for the eval dataset (default: filtered).")
     parser.add_argument("--logit_scale", type=float, default=1.0, help="Scaling factor applied after softmax in the gating network")
     parser.add_argument("--temperature", type=float, default=10.0, help="Temperature for softmax scaling in the gating network")
     parser.add_argument("--n_hidden", type=int, default=3, help="Number of hidden layers in the gating network MLP")
@@ -317,11 +318,13 @@ def main():
     regression_layer_path = os.path.join(
         BASE_DATA_DIR, "regression_weights", f"{args.model_name}_{args.multi_objective_dataset_name}.pt"
     )
-    # RewardBench embeddings path pattern.
-    reward_bench_folder_name = "reward-bench-filtered"
-    reward_bench_embedding_path_pattern = os.path.join(
-        BASE_DATA_DIR, "embeddings", args.model_name, reward_bench_folder_name, "*.safetensors"
-    )
+    # Eval dataset embeddings path pattern.
+    eval_embedding_path_pattern = None
+    if args.eval:
+        eval_folder_name = f"{args.eval}-{args.eval_split}"
+        eval_embedding_path_pattern = os.path.join(
+            BASE_DATA_DIR, "embeddings", args.model_name, eval_folder_name, "*.safetensors"
+        )
     # Reference embeddings path pattern.
     reference_embedding_path_pattern = os.path.join(
         BASE_DATA_DIR, "embeddings", args.model_name, args.reference_dataset_name, "*.safetensors"
@@ -332,7 +335,8 @@ def main():
     print(f"Preference Embedding Path Pattern: {preference_embedding_path_pattern}")
     print(f"Regression Layer Path: {regression_layer_path}")
     print(f"Reference Embedding Path Pattern: {reference_embedding_path_pattern}")
-    print(f"RewardBench Embedding Path Pattern: {reward_bench_embedding_path_pattern}")
+    if eval_embedding_path_pattern:
+        print(f"Eval Embedding Path Pattern: {eval_embedding_path_pattern}")
 
     # Load data to CPU with robust error handling.
     try:
@@ -543,12 +547,12 @@ def main():
     }, save_path)
     print(f"Saved gating network state dict to {save_path}")
 
-    # --- Optional RewardBench evaluation ---
-    if args.eval_reward_bench:
-        print("Evaluating on RewardBench...")
+    # --- Optional eval dataset evaluation ---
+    if args.eval and eval_embedding_path_pattern:
+        print(f"Evaluating on {args.eval}...")
         all_correct_flags_rb_list = []
         try:
-            rb_embeddings_cpu, rb_prompt_embeddings_cpu = load_embeddings(reward_bench_embedding_path_pattern)
+            rb_embeddings_cpu, rb_prompt_embeddings_cpu = load_embeddings(eval_embedding_path_pattern)
         except ValueError as e:
             print(f"Warning: Could not load RewardBench embeddings: {e}. Skipping evaluation.")
         else:
@@ -569,7 +573,7 @@ def main():
             if all_correct_flags_rb_list:
                 all_correct_flags_rb = torch.cat(all_correct_flags_rb_list, dim=0)
                 try:
-                    reward_bench_ds = datasets.load_dataset("allenai/reward-bench", split="filtered")
+                    reward_bench_ds = datasets.load_dataset(f"allenai/{args.eval}", split=args.eval_split)
                     if len(reward_bench_ds) == len(all_correct_flags_rb):
                         df_examples_rb = pd.DataFrame({"subset": reward_bench_ds["subset"], "correct": all_correct_flags_rb.numpy()})
                         scores_per_section, metrics = eval_reward_bench(df_examples_rb)

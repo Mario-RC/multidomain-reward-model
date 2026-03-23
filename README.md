@@ -159,7 +159,7 @@ python3 stage-2_train.py \
   --reference_dataset_name null \
   --debiasing_dim -1 \
   --dataset_split train \
-  --eval_reward_bench \
+  --eval reward-bench \
   --device 0
 ```
 
@@ -255,17 +255,10 @@ Instead of hardcoded CLI parameters, you can use `config.yaml` to configure the 
 
 ### Config-driven commands
 
+All scripts accept `--config_path config.yaml` (default) to read their corresponding section. For example:
+
 ```bash
 python3 stage-1_prepare.py --config_path config.yaml
-python3 stage-1_train.py --config_path config.yaml
-python3 stage-2_prepare.py --config_path config.yaml
-python3 stage-2_train.py --config_path config.yaml
-python3 stage-3_package_model.py --config_path config.yaml
-python3 evaluate.py --config_path config.yaml
-python3 predict.py --config_path config.yaml
-python3 analyze_correlations.py --config_path config.yaml
-python3 benchmark.py --config_path config.yaml
-python3 evaluate_baseline.py --config_path config.yaml
 ```
 
 ---
