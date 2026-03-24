@@ -40,6 +40,7 @@ Usage:
 
 import json
 import sys
+from datetime import datetime
 from argparse import ArgumentParser
 from itertools import combinations
 
@@ -203,6 +204,7 @@ def domain_of(attr):
 # ---------------------------------------------------------------------------
 
 def main():
+    print(f"\n### Analyze correlations started at {datetime.now().isoformat()} ###")
     parser = ArgumentParser(description="Analyze attribute correlations and length bias in scoring data.")
     parser.add_argument("--dataset_path", type=str, default="data/Multi-Domain-Data-Scoring.jsonl",
                         help="Path to the Multi-Domain-Data-Scoring JSONL file.")

@@ -1,40 +1,11 @@
 from typing import Dict, List
+from datetime import datetime
 import torch
 from argparse import ArgumentParser
 from transformers import AutoTokenizer
 from modeling_custom import RewardModelWithGating
 from config_utils import load_yaml_config
-
-
-def _resolve_inference_model_path(
-    config: dict,
-    cli_model_path: str | None,
-    cli_model_parent_dir: str | None,
-    cli_model_name: str | None,
-) -> str:
-    if cli_model_path:
-        return cli_model_path
-
-    inference_cfg = config.get("inference", {}) if isinstance(config, dict) else {}
-    if not isinstance(inference_cfg, dict):
-        inference_cfg = {}
-
-    explicit_model_path = inference_cfg.get("model_path")
-    if explicit_model_path:
-        return str(explicit_model_path)
-
-    if cli_model_parent_dir or cli_model_name:
-        model_parent_dir = str(cli_model_parent_dir or inference_cfg.get("model_parent_dir", "model"))
-        model_name = cli_model_name or inference_cfg.get("model_name")
-        if not model_name:
-            raise ValueError("model_name must be provided via --model_name or config.yaml inference.model_name")
-        return f"./{model_parent_dir}/{str(model_name)}"
-
-    model_name = inference_cfg.get("model_name")
-    if not model_name:
-        raise ValueError("model_name must be provided via --model_name or config.yaml inference.model_name")
-    model_parent_dir = str(inference_cfg.get("model_parent_dir", "model"))
-    return f"./{model_parent_dir}/{str(model_name)}"
+from utils import _resolve_inference_model_path
 
 class MultiDomainRMPipeline:
     def __init__(self, model_id, device_map="auto", torch_dtype=None, truncation=True, max_length=4096):
@@ -82,6 +53,7 @@ class MultiDomainRMPipeline:
 
 
 def main() -> None:
+    print(f"\n### Predict started at {datetime.now().isoformat()} ###")
     parser = ArgumentParser(description="Run quick prediction comparison using packaged reward model.")
     parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
     parser.add_argument("--model_path", type=str, default=None, help="Optional override for packaged model path.")

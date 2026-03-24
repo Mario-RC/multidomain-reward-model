@@ -16,94 +16,11 @@ from scipy.stats import pearsonr, spearmanr
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
+from datetime import datetime
 from modeling_custom import RewardModelWithGating
 from config_utils import load_yaml_config
 from attributes import ATTRIBUTES, DOMAIN_PREFIXES
-
-
-# ---------------------------------------------------------------------------
-# Model path resolution
-# ---------------------------------------------------------------------------
-
-def _resolve_inference_model_path(
-    config: dict,
-    cli_model_path: str | None,
-    cli_model_parent_dir: str | None,
-    cli_model_name: str | None,
-) -> str:
-    if cli_model_path:
-        return cli_model_path
-
-    inference_cfg = config.get("inference", {}) if isinstance(config, dict) else {}
-    if not isinstance(inference_cfg, dict):
-        inference_cfg = {}
-
-    explicit_model_path = inference_cfg.get("model_path")
-    if explicit_model_path:
-        return str(explicit_model_path)
-
-    if cli_model_parent_dir or cli_model_name:
-        model_parent_dir = str(cli_model_parent_dir or inference_cfg.get("model_parent_dir", "model"))
-        model_name = cli_model_name or inference_cfg.get("model_name")
-        if not model_name:
-            raise ValueError("model_name must be provided via --model_name or config.yaml inference.model_name")
-        return f"./{model_parent_dir}/{str(model_name)}"
-
-    model_name = inference_cfg.get("model_name")
-    if not model_name:
-        raise ValueError("model_name must be provided via --model_name or config.yaml inference.model_name")
-    model_parent_dir = str(inference_cfg.get("model_parent_dir", "model"))
-    return f"./{model_parent_dir}/{str(model_name)}"
-
-
-# ---------------------------------------------------------------------------
-# Data loading
-# ---------------------------------------------------------------------------
-
-def _resolve_jsonl_path(path: str) -> str:
-    """Return *path* if it exists, otherwise try appending .jsonl."""
-    if os.path.isfile(path):
-        return path
-    candidate = path + ".jsonl"
-    if os.path.isfile(candidate):
-        return candidate
-    raise FileNotFoundError(f"Dataset not found: {path} (also tried {candidate})")
-
-
-def load_jsonl_test(path: str) -> list[dict]:
-    """Load all records whose split == 'test' from a JSONL file."""
-    path = _resolve_jsonl_path(path)
-    records: list[dict] = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            record = json.loads(line)
-            split = record.get("split") or record.get("metadata", {}).get("split")
-            if split == "test":
-                records.append(record)
-    return records
-
-
-# ---------------------------------------------------------------------------
-# Inference helper
-# ---------------------------------------------------------------------------
-
-@torch.no_grad()
-def _score_messages(model, tokenizer, messages, device, max_length):
-    encoding = tokenizer.apply_chat_template(
-        messages, return_tensors="pt", padding=True, truncation=True, max_length=max_length,
-    )
-    if isinstance(encoding, torch.Tensor):
-        input_ids = encoding.to(device)
-        attention_mask = None
-    else:
-        # BatchEncoding or dict-like
-        input_ids = encoding["input_ids"].to(device)
-        attention_mask = encoding.get("attention_mask")
-        attention_mask = attention_mask.to(device) if attention_mask is not None else None
-    return model(input_ids=input_ids, attention_mask=attention_mask)
+from utils import _resolve_inference_model_path, _resolve_jsonl_path, load_jsonl_test, _score_messages
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +264,7 @@ def evaluate_preference(model, tokenizer, data_path, device, max_length, max_sam
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    print(f"\n### Evaluate started at {datetime.now().isoformat()} ###")
     parser = ArgumentParser(description="Evaluate packaged multi-domain reward model on test data.")
 
     # Model
@@ -420,10 +338,6 @@ def main() -> None:
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
         print(f"\n  Results saved to {out_path}")
-
-    print(f"\n{'=' * 70}")
-    print("  Done.")
-    print(f"{'=' * 70}")
 
     return results
 

@@ -4,9 +4,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import List, Optional
 from transformers import AutoConfig, AutoModel, PreTrainedModel
 from transformers.utils import ModelOutput
+from utils import TOKEN_PATTERNS_BY_MODEL_TYPE, find_token_for_gating
 
 class GatingNetwork(nn.Module):
     def __init__(self, in_features: int, out_features: int, bias: bool = True, temperature: float = 10,
@@ -28,29 +29,6 @@ class GatingNetwork(nn.Module):
         # Temperature controls distribution sharpness over objectives.
         x = F.softmax(x / self.temperature, dim=-1)
         return x * self.logit_scale[0]
-
-TOKEN_PATTERNS_BY_MODEL_TYPE = {
-    # Llama3: "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    "llama": [128009, 128006, 78191, 128007, 271],
-    # Gemma2: "<end_of_turn>\n<start_of_turn>model\n"
-    "gemma2": [107, 108, 106, 2516, 108],
-}
-
-
-def find_token_for_gating(tokens: Sequence[int], model_type: Optional[str]) -> int:
-    # Find the last token pattern occurrence used to extract prompt embedding.
-    token_pattern = TOKEN_PATTERNS_BY_MODEL_TYPE.get(model_type)
-    if not token_pattern:
-        # Fallback for families without explicit pattern support.
-        return max(len(tokens) - 1, 0)
-
-    token_pattern_len = len(token_pattern)
-    search_end = len(tokens)
-    for j in range(search_end - token_pattern_len, -1, -1):
-        if list(tokens[j:j + token_pattern_len]) == token_pattern:
-            return j
-    # Fallback if exact marker pattern is not present in rendered prompt.
-    return max(len(tokens) - 1, 0)
 
 @dataclass
 class CustomOutput(ModelOutput):

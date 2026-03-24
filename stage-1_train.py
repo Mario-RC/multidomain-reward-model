@@ -17,7 +17,7 @@ import traceback  # For error logging
 from datetime import datetime
 from config_utils import load_yaml_config, apply_section_overrides
 
-print(f"Stage 1 Train started at {datetime.now().isoformat()}")
+print(f"\n### Stage 1: Train started at {datetime.now().isoformat()} ###")
 
 """
 Perform multi-objective linear regression on precomputed embeddings.
@@ -53,21 +53,7 @@ args.model_name = args.model_path.split("/")[-1]
 # ---------------------------
 # Configuration and setup
 # ---------------------------
-# This list must match the labels saved by stage-1_prepare.py
-attributes = [
-    # coherence (co_)
-    "co_discourse_structure", "co_logical_consistency", "co_mutual_grounding",
-    "co_overall_coherence_score", "co_temporal_causal_coherence", "co_topic_coherence",
-    # commonsense (cs_)
-    "cs_causality", "cs_coherence", "cs_consistency", "cs_desire",
-    "cs_empathy", "cs_reaction",
-    # empathy (em_)
-    "em_emotional_awareness", "em_emotional_validation", "em_helpful_response",
-    "em_overall_empathy_score", "em_perspective_taking", "em_supportive_engagement",
-    # multicultural (mu_)
-    "mu_coherence", "mu_cultural_specificity", "mu_cultural_value",
-    "mu_empathy", "mu_naturalness"
-]
+from attributes import ATTRIBUTES as attributes
 print(f"Using {len(attributes)} custom attributes for regression.")
 
 # Base paths
@@ -280,4 +266,3 @@ except Exception as e:
     sys.exit(1)
 
 # --- END ---
-print("\nStage 1 Train finished successfully.")

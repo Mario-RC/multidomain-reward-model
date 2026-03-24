@@ -23,23 +23,9 @@ from datetime import datetime
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-print(f"Stage 2 Train started at {datetime.now().isoformat()}")
+print(f"\n### Stage 2: Train started at {datetime.now().isoformat()} ###")
 
-# Attributes used by the multi-objective reward model (kept consistent across scripts).
-attributes = [
-    # coherence (co_)
-    "co_discourse_structure", "co_logical_consistency", "co_mutual_grounding",
-    "co_overall_coherence_score", "co_temporal_causal_coherence", "co_topic_coherence",
-    # commonsense (cs_)
-    "cs_causality", "cs_coherence", "cs_consistency", "cs_desire",
-    "cs_empathy", "cs_reaction",
-    # empathy (em_)
-    "em_emotional_awareness", "em_emotional_validation", "em_helpful_response",
-    "em_overall_empathy_score", "em_perspective_taking", "em_supportive_engagement",
-    # multicultural (mu_)
-    "mu_coherence", "mu_cultural_specificity", "mu_cultural_value",
-    "mu_empathy", "mu_naturalness"
-]
+from attributes import ATTRIBUTES as attributes
 
 # ----------------------------
 # MODEL
@@ -261,7 +247,7 @@ def main():
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay for AdamW optimizer")
     parser.add_argument("--n_steps", type=int, default=2000, help="Total number of training steps")
     parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
-    parser.add_argument("--debiasing_dim", type=int, default=-1, help="Index (0-based) of the attribute dimension to decorrelate from all others. Set to -1 to disable debiasing.")
+    parser.add_argument("--debiasing_dims", type=int, nargs="+", default=[-1], help="Indices (0-based) of attribute dimensions to decorrelate from all others. Set to -1 to disable debiasing. Multiple values supported, e.g. --debiasing_dims 21 18.")
     parser.add_argument("--corr_threshold", type=float, default=0.03, help="Maximum allowed absolute Spearman correlation for debiasing")
     parser.add_argument("--model_family", type=str, default="llama3", choices=["llama3", "gemma2", "qwen3", "auto"], help="Model family for token pattern matching during embedding extraction (if applicable, less relevant here)")
     parser.add_argument("--eval", type=str, default=None, help="Eval dataset name (e.g. reward-bench). Requires embeddings from stage-2_prepare.")
@@ -272,6 +258,8 @@ def main():
     parser.add_argument("--hidden_size", type=int, default=1024, help="Dimension of hidden layers in the gating network")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout probability in the gating network's hidden layers")
     parser.add_argument("--max_samples", type=int, default=None, help="Load only the first N samples from datasets (for debugging RAM issues)")
+    parser.add_argument("--eval_every", type=int, default=200, help="Evaluate on validation set every N steps")
+    parser.add_argument("--patience", type=int, default=5, help="Early stopping patience (number of evaluations without improvement)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
     args = parser.parse_args()
 
@@ -354,7 +342,8 @@ def main():
         n_attributes, hidden_size = regression_layer.shape
 
         ref_embeddings_cpu = None
-        if args.debiasing_dim >= 0:
+        _debiasing_requested = any(d >= 0 for d in args.debiasing_dims)
+        if _debiasing_requested:
             print("Loading reference embeddings for debiasing (to CPU RAM)...")
             ref_embeddings_cpu, _ = load_embeddings(reference_embedding_path_pattern)
 
@@ -364,11 +353,11 @@ def main():
                 ref_embeddings_cpu = ref_embeddings_cpu[indices_ref]
         else:
             if not _ref_is_null:
-                print(f"WARNING: reference_dataset_name '{ref_base}' was provided but debiasing_dim < 0, "
-                      f"so debiasing is disabled and the reference dataset will NOT be used. "
-                      f"Set debiasing_dim to the target dimension index to enable debiasing, "
+                print(f"WARNING: reference_dataset_name '{ref_base}' was provided but debiasing is disabled, "
+                      f"so the reference dataset will NOT be used. "
+                      f"Set --debiasing_dims to enable debiasing, "
                       f"or pass --reference_dataset_name null to silence this warning.")
-            print("Debiasing disabled (debiasing_dim < 0). Skipping reference embeddings.")
+            print("Debiasing disabled. Skipping reference embeddings.")
 
     except (ValueError, FileNotFoundError, KeyError) as e:
         print(f"FATAL ERROR: Failed during data loading: {e}.")
@@ -378,52 +367,46 @@ def main():
         print(f"3. Regression weights file ({regression_layer_path}) contains the 'weight' key.")
         sys.exit(1)
 
-    # Calculate debiasing penalties.
-    penalties_tensor = torch.zeros(n_attributes, device=device)
-    if args.debiasing_dim >= 0:
-        print("Calculating debiasing penalties...")
-        ref_embeddings_for_debiasing = ref_embeddings_cpu.to('cpu')  # Ensure CPU tensor.
-        # Proceed only when reference embeddings are available and non-empty.
+    # Calculate debiasing penalties for each requested dimension.
+    debiasing_dims = [d for d in args.debiasing_dims if 0 <= d < n_attributes]
+    debiasing_enabled = len(debiasing_dims) > 0
+
+    all_penalties = {}  # dim -> penalties_tensor
+    if debiasing_enabled:
+        print(f"Calculating debiasing penalties for dimensions: {debiasing_dims}...")
+        ref_embeddings_for_debiasing = ref_embeddings_cpu.to('cpu')
         if ref_embeddings_for_debiasing is not None and ref_embeddings_for_debiasing.shape[0] > 0:
-            regression_layer_cpu = regression_layer.to('cpu')  # Temporary CPU copy of regression weights.
+            regression_layer_cpu = regression_layer.to('cpu')
             try:
                 pairwise_rewards = ref_embeddings_for_debiasing @ regression_layer_cpu.T
-                # Reshape safely; keep empty array if no elements are present.
                 rewards = pairwise_rewards.reshape(-1, n_attributes) if pairwise_rewards.numel() > 0 else np.array([])
 
                 if rewards.shape[0] > 0:
-                     penalties = find_debiasing_penalties(
-                        rewards.numpy(), debiasing_dim=args.debiasing_dim, corr_threshold=args.corr_threshold
-                     )
+                    for dim in debiasing_dims:
+                        penalties = find_debiasing_penalties(
+                            rewards.numpy(), debiasing_dim=dim, corr_threshold=args.corr_threshold
+                        )
+                        all_penalties[dim] = torch.from_numpy(penalties['penalty']).float().to(device)
+                        print(f"  dim {dim}: penalties={penalties['penalty']}")
                 else:
                     print("Warning: Rewards array for debiasing is empty. Skipping debiasing.")
-                    penalties = {'penalty': np.zeros(n_attributes), 'corr': np.ones(n_attributes)}  # Default: no debiasing.
-
             except Exception as e:
                 print(f"Warning: Error during debiasing penalty calculation: {e}. Skipping debiasing.")
-                penalties = {'penalty': np.zeros(n_attributes), 'corr': np.ones(n_attributes)}  # Safe fallback on error.
             finally:
-                # Free temporary CPU tensors as early as possible.
                 del ref_embeddings_for_debiasing, regression_layer_cpu
                 if 'pairwise_rewards' in locals(): del pairwise_rewards
                 if 'rewards' in locals(): del rewards
         else:
-             print("Warning: Reference embeddings tensor is empty or None. Skipping debiasing.")
-             penalties = {'penalty': np.zeros(n_attributes), 'corr': np.ones(n_attributes)}  # Safe fallback.
-
-        print("Penalties calculated:", penalties)
-        penalties_tensor = torch.from_numpy(penalties['penalty']).float().to(device)  # Move final tensor to device.
-
-
+            print("Warning: Reference embeddings tensor is empty or None. Skipping debiasing.")
 
     # Build reward transform matrix on device.
     reward_transform_matrix = torch.eye(n_attributes, device=device)
-    if args.debiasing_dim < 0:
-        print("Debiasing disabled (debiasing_dim < 0). Using identity reward_transform_matrix.")
-    elif args.debiasing_dim < n_attributes:
-        reward_transform_matrix[args.debiasing_dim, :] -= penalties_tensor  # Apply debiasing penalties to target row.
+    if not debiasing_enabled:
+        print("Debiasing disabled. Using identity reward_transform_matrix.")
     else:
-        print(f"Warning: debiasing_dim ({args.debiasing_dim}) out of range (0-{n_attributes-1}). Not applying debiasing penalties.")
+        for dim, penalties_tensor in all_penalties.items():
+            reward_transform_matrix[dim, :] -= penalties_tensor
+        print(f"Applied debiasing to {len(all_penalties)} dimension(s).")
 
     # Keep dataset tensors on CPU; move mini-batches on demand.
     X_cpu = prompt_embeddings_cpu
@@ -459,9 +442,37 @@ def main():
     scaler = torch.amp.GradScaler(enabled=(device.type == 'cuda'))
     print(f"Using Automatic Mixed Precision (AMP) with dtype: {amp_dtype}")
 
-    # --- Training loop ---
-    print(f"Starting training for {args.n_steps} steps...")
+    # --- Helper: compute validation loss and accuracy ---
+    def _eval_validation():
+        gating_network.eval()
+        total_loss = 0.0
+        correct = 0
+        total = 0
+        vbs = args.batch_size * 4
+        with torch.no_grad():
+            for i in range(0, X_val_cpu.shape[0], vbs):
+                X_vb = X_val_cpu[i:i+vbs].to(device, non_blocking=True)
+                Z_vb = Z_val_cpu[i:i+vbs].to(device, non_blocking=True)
+                with torch.amp.autocast(device_type=device.type, dtype=amp_dtype):
+                    gw = gating_network(X_vb)
+                    pred = torch.sum((Z_vb @ regression_layer.T @ reward_transform_matrix) * gw, dim=-1)
+                    batch_loss = loss_fn(pred[:, 0] - pred[:, 1], torch.ones(pred.shape[0], device=device))
+                total_loss += batch_loss.item() * X_vb.shape[0]
+                correct += ((pred[:, 0] - pred[:, 1]) > 0).sum().item()
+                total += X_vb.shape[0]
+        gating_network.train()
+        val_loss = total_loss / total if total > 0 else float('inf')
+        val_acc = correct / total if total > 0 else 0.0
+        return val_loss, val_acc
+
+    # --- Training loop with early stopping (based on validation loss) ---
+    print(f"Starting training for {args.n_steps} steps (eval every {args.eval_every}, patience {args.patience})...")
     iterator = tqdm(range(args.n_steps), desc="Training Progress")
+
+    best_val_loss = float('inf')
+    best_val_acc = 0.0
+    best_state_dict = None
+    evals_without_improvement = 0
 
     for step in iterator:
         gating_network.train()  # Enable training behavior (e.g., dropout).
@@ -499,6 +510,21 @@ def main():
                  current_lr = scheduler.get_last_lr()[0]
                  iterator.set_postfix({'Loss': f"{loss.item():.4f}", 'LR': f"{current_lr:.1e}"})
 
+            # --- Periodic validation & early stopping (based on val loss) ---
+            if (step + 1) % args.eval_every == 0:
+                val_loss, val_acc = _eval_validation()
+                print(f"  Step {step+1}: val_loss={val_loss:.4f}, val_acc={val_acc:.4f} (best_loss={best_val_loss:.4f})")
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_val_acc = val_acc
+                    best_state_dict = {k: v.cpu().clone() for k, v in gating_network.state_dict().items()}
+                    evals_without_improvement = 0
+                else:
+                    evals_without_improvement += 1
+                    if evals_without_improvement >= args.patience:
+                        print(f"  Early stopping at step {step+1} (no improvement for {args.patience} evals). Best val_loss={best_val_loss:.4f}, val_acc={best_val_acc:.4f}")
+                        break
+
         except RuntimeError as e:
             # Surface detailed tensor shapes for common runtime failures.
             print(f"FATAL ERROR during training step {step}: {e}")
@@ -506,32 +532,18 @@ def main():
             traceback.print_exc()
             sys.exit(1)
 
+    # --- Restore best checkpoint ---
+    if best_state_dict is not None:
+        gating_network.load_state_dict(best_state_dict)
+        print(f"\nRestored best checkpoint (val_loss={best_val_loss:.4f}, val_acc={best_val_acc:.4f})")
+    else:
+        # No eval was run (n_steps < eval_every), evaluate now
+        best_val_loss, best_val_acc = _eval_validation()
+        print(f"\nFinal Validation Loss: {best_val_loss:.4f}, Accuracy: {best_val_acc:.4f}")
 
-    # --- Evaluation and persistence ---
-    print("\nTraining finished. Evaluating model on validation set...")
+    acc_val = best_val_acc
     model_eval = gating_network
     model_eval.eval()
-
-    val_correct_total = 0
-    val_total_samples = 0
-    val_batch_size = args.batch_size * 4  # Larger batch for faster validation.
-
-    with torch.no_grad():
-        val_iterator = tqdm(range(0, X_val_cpu.shape[0], val_batch_size), desc="Validation", leave=False)
-        for i in val_iterator:
-            X_val_batch = X_val_cpu[i:i+val_batch_size].to(device, non_blocking=True)
-            Z_val_batch = Z_val_cpu[i:i+val_batch_size].to(device, non_blocking=True)
-
-            with torch.amp.autocast(device_type=device.type, dtype=amp_dtype):
-                gating_weights_val = model_eval(X_val_batch)
-                pred_val = torch.sum((Z_val_batch @ regression_layer.T @ reward_transform_matrix) * gating_weights_val, dim=-1)
-
-            correct_preds = ((pred_val[:, 0] - pred_val[:, 1]) > 0).sum().item()
-            val_correct_total += correct_preds
-            val_total_samples += X_val_batch.shape[0]
-
-    acc_val = val_correct_total / val_total_samples if val_total_samples > 0 else 0.0
-    print(f"Final Validation Accuracy: {acc_val:.4f}")
 
     # --- Save model checkpoint ---
     save_dir = os.path.join(BASE_DATA_DIR, "gating_network")

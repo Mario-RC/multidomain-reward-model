@@ -11,31 +11,17 @@ from safetensors.torch import save_file
 from argparse import ArgumentParser
 from datetime import datetime
 from config_utils import load_yaml_config, apply_section_overrides
-
-
-def _build_save_paths(base_data_dir: str, model_name: str, dataset_folder: str, base_file_stem: str, n_shards: int, shard_idx: int):
-    """Construct output dir and filename consistently with Stage 1 save logic."""
-    final_dir = os.path.join(base_data_dir, "embeddings", model_name, dataset_folder)
-    os.makedirs(final_dir, exist_ok=True)
-    if n_shards > 1:
-        file_name = f"{base_file_stem}-{shard_idx:05d}-of-{n_shards:05d}.safetensors"
-    else:
-        file_name = f"{base_file_stem}.safetensors"
-    return final_dir, os.path.join(final_dir, file_name)
+from utils import (
+    _build_save_paths, _resolve_local_dataset_file, _load_tokenizer_robust,
+    _requires_remote_code, TOKEN_PATTERNS_BY_MODEL_TYPE as token_patterns,
+    find_token_for_gating,
+)
 
 # Enable TF32 for faster matmul on supported GPUs
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-# Token patterns used to locate the gating position by model family.
-token_patterns = {
-    # Llama3 token IDs of "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    "llama3": [128009, 128006, 78191, 128007, 271],
-    # Gemma2 token IDs of "<end_of_turn>\n<start_of_turn>model\n"
-    "gemma2": [107, 108, 106, 2516, 108],
-}
-
-print(f"Stage 2 Prepare started at {datetime.now().isoformat()}")
+print(f"\n### Stage 2: Prepare started at {datetime.now().isoformat()} ###")
 
 
 def _is_valid_score_value(value) -> bool:
@@ -87,50 +73,6 @@ def _is_train_split(example: dict) -> bool:
     if split_value is None:
         return True
     return str(split_value).lower() == "train"
-
-
-def _resolve_local_dataset_file(dataset_path: str):
-    """Resolve local JSON/JSONL path, accepting optional missing extension."""
-    candidate_paths = [dataset_path]
-    if not dataset_path.endswith(".jsonl") and not dataset_path.endswith(".json"):
-        candidate_paths.extend([f"{dataset_path}.jsonl", f"{dataset_path}.json"])
-
-    for candidate in candidate_paths:
-        if os.path.isfile(candidate):
-            return candidate
-    return None
-
-
-def _load_tokenizer_robust(model_path: str):
-    """Load tokenizer with fallback to slow tokenizer when fast conversion deps are missing."""
-    trust_remote_code = _requires_remote_code(model_path)
-    try:
-        return AutoTokenizer.from_pretrained(model_path, trust_remote_code=trust_remote_code)
-    except (ValueError, ImportError) as e:
-        print(f"Warning: Fast tokenizer load failed ({e}). Retrying with use_fast=False...")
-        return AutoTokenizer.from_pretrained(model_path, use_fast=False, trust_remote_code=trust_remote_code)
-
-
-def _requires_remote_code(model_path: str) -> bool:
-    return "qwen3" in str(model_path).lower()
-
-def find_token_for_gating(lst, model_family):
-    """Return the start index of the last model-specific token pattern."""
-    if model_family == "qwen3":
-        # Qwen chat templates can differ across checkpoints; use the last token as robust fallback.
-        return max(len(lst) - 1, 0)
-
-    token_pattern = token_patterns.get(model_family)
-    if not token_pattern:
-        # Fallback for unsupported families: use the last token position.
-        return max(len(lst) - 1, 0)
-    token_pattern_len = len(token_pattern)
-    search_end = len(lst)
-    for j in range(search_end - token_pattern_len, -1, -1):
-        if lst[j : j + token_pattern_len] == token_pattern:
-            return j
-    # Fallback if pattern is not found in the rendered prompt.
-    return max(len(lst) - 1, 0)
 
 
 def _render_chat_text(tokenizer, messages):

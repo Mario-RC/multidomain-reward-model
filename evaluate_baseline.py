@@ -22,36 +22,10 @@ from scipy.stats import pearsonr, spearmanr
 from tqdm import tqdm
 from transformers import AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
 
+from datetime import datetime
 from attributes import ATTRIBUTES, DOMAIN_PREFIXES
 from config_utils import load_yaml_config, apply_section_overrides
-
-
-def _resolve_jsonl_path(path: str) -> str:
-    if os.path.isfile(path):
-        return path
-    candidate = path + ".jsonl"
-    if os.path.isfile(candidate):
-        return candidate
-    raise FileNotFoundError(f"Dataset not found: {path} (also tried {candidate})")
-
-
-def load_jsonl_test(path: str) -> list[dict]:
-    path = _resolve_jsonl_path(path)
-    records: list[dict] = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            record = json.loads(line)
-            split = record.get("split") or record.get("metadata", {}).get("split")
-            if split == "test":
-                records.append(record)
-    return records
-
-
-def _requires_remote_code(model_path: str) -> bool:
-    return "qwen3" in str(model_path).lower()
+from utils import _resolve_jsonl_path, load_jsonl_test, _requires_remote_code
 
 
 @torch.no_grad()
@@ -557,6 +531,7 @@ def _save_results(results, args):
 
 
 def main() -> None:
+    print(f"\n### Evaluate baseline started at {datetime.now().isoformat()} ###")
     parser = ArgumentParser(description="Evaluate base reward model on scoring and preference data.")
     parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
     parser.add_argument("--model_path", type=str, default=None, help="Base model HF ID or local path.")
@@ -631,9 +606,6 @@ def main() -> None:
             results["preference"] = evaluate_preference_generative(model, tokenizer, pref_records, device, args.max_gen_tokens)
 
         _save_results(results, args)
-        print(f"\n{'=' * 70}")
-        print("  Done.")
-        print(f"{'=' * 70}")
         return
 
     # --- Scalar RM mode ---
@@ -703,9 +675,6 @@ def main() -> None:
         print("\n  (Preference evaluation skipped — requires --no_regression or --generative)")
 
     _save_results(results, args)
-    print(f"\n{'=' * 70}")
-    print("  Done.")
-    print(f"{'=' * 70}")
 
 
 if __name__ == "__main__":

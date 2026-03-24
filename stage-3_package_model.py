@@ -4,14 +4,12 @@ import os
 import sys
 import torch
 from argparse import ArgumentParser
+from datetime import datetime
 from transformers import AutoConfig, AutoTokenizer
 from modeling_custom import RewardModelWithGating
 from config_utils import load_yaml_config
 from attributes import ATTRIBUTES
-
-
-def _requires_remote_code(model_path: str) -> bool:
-    return "qwen3" in str(model_path).lower()
+from utils import _requires_remote_code
 
 def _safe_torch_load(path: str):
     # Prefer safe weights-only loading when the installed PyTorch supports it.
@@ -79,7 +77,8 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
         "gating_network",
         (
             f"gating_network_{model_name}_mo_{multi_objective_dataset_name}_"
-            f"pref_{preference_base}_ref_{reference_base}_T10.0_N2000_seed0.pt"
+            f"pref_{preference_base}_ref_{reference_base}"
+            f"_T{getattr(args, 'temperature', 10.0):.1f}_N{getattr(args, 'n_steps', 2000)}_seed{getattr(args, 'seed', 0)}.pt"
         ),
     )
     model_parent_dir = str(stage3_cfg.get("model_parent_dir", stage3_cfg.get("output_parent_dir", "model")))
@@ -106,6 +105,9 @@ def main() -> None:
     parser.add_argument("--output_model_name", type=str, default=None, help="Optional packaged model directory name.")
     parser.add_argument("--output_dir", type=str, default=None, help="Optional override for final packaged model output directory.")
     parser.add_argument("--model_family", type=str, default=None, help="Model family (llama3, gemma2, qwen3, auto).")
+    parser.add_argument("--temperature", type=float, default=10.0, help="Temperature used in stage-2 training (for locating checkpoint).")
+    parser.add_argument("--n_steps", type=int, default=2000, help="Number of steps used in stage-2 training (for locating checkpoint).")
+    parser.add_argument("--seed", type=int, default=0, help="Seed used in stage-2 training (for locating checkpoint).")
     args = parser.parse_args()
 
     config = load_yaml_config(args.config_path)
@@ -125,14 +127,11 @@ def main() -> None:
         sys.exit(1)
     output_dir = args.output_dir or os.path.join(model_parent_dir, output_model_name)
 
-    print("=" * 60)
-    print("Stage 3: Packaging model")
-    print("=" * 60)
+    print(f"\n### Stage 3: Package model started at {datetime.now().isoformat()} ###")
     print(f"  Base model:          {args.model_path}")
     print(f"  Stage 1 weights:     {stage_1_weights_path}")
     print(f"  Stage 2 weights:     {stage_2_weights_path}")
     print(f"  Output directory:    {output_dir}")
-    print("=" * 60)
 
     print("Loading configuration and tokenizer...")
     trust_remote_code = _requires_remote_code(args.model_path)
@@ -187,7 +186,7 @@ def main() -> None:
     os.makedirs(output_dir, exist_ok=True)
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
-    print(f"Done. The multidomain reward model is packaged at: {output_dir}")
+    print(f"Multidomain reward model packaged at: {output_dir}")
 
 
 if __name__ == "__main__":

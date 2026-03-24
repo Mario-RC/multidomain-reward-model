@@ -16,23 +16,13 @@ import traceback
 import json
 from datetime import datetime
 from config_utils import load_yaml_config, apply_section_overrides
-
-
-def _build_save_paths(base_data_dir: str, model_name: str, dataset_folder: str, base_file_stem: str, n_shards: int, shard_idx: int):
-    """Construct output dir and filename consistently with Stage 2 save logic."""
-    final_dir = os.path.join(base_data_dir, "embeddings", model_name, dataset_folder)
-    os.makedirs(final_dir, exist_ok=True)
-    if n_shards > 1:
-        file_name = f"{base_file_stem}-{shard_idx:05d}-of-{n_shards:05d}.safetensors"
-    else:
-        file_name = f"{base_file_stem}.safetensors"
-    return final_dir, os.path.join(final_dir, file_name)
+from utils import _build_save_paths, _resolve_local_dataset_file, _load_tokenizer_robust, _requires_remote_code
 
 # Enable TF32 for faster matmul on supported GPUs
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-print(f"Stage 1 Prepare started at {datetime.now().isoformat()}")
+print(f"\n### Stage 1: Prepare started at {datetime.now().isoformat()} ###")
 
 
 def _is_valid_score_value(value) -> bool:
@@ -61,47 +51,8 @@ def _keep_split(record: dict, target_split: str) -> bool:
     return str(split_value).lower() == target_split
 
 
-def _resolve_local_dataset_file(dataset_path: str):
-    """Resolve local JSON/JSONL path, accepting optional missing extension."""
-    candidate_paths = [dataset_path]
-    if not dataset_path.endswith(".jsonl") and not dataset_path.endswith(".json"):
-        candidate_paths.extend([f"{dataset_path}.jsonl", f"{dataset_path}.json"])
 
-    for candidate in candidate_paths:
-        if os.path.isfile(candidate):
-            return candidate
-    return None
-
-
-def _load_tokenizer_robust(model_path: str):
-    """Load tokenizer with fallback to slow tokenizer when fast conversion deps are missing."""
-    trust_remote_code = _requires_remote_code(model_path)
-    try:
-        return AutoTokenizer.from_pretrained(model_path, trust_remote_code=trust_remote_code)
-    except (ValueError, ImportError) as e:
-        print(f"Warning: Fast tokenizer load failed ({e}). Retrying with use_fast=False...")
-        return AutoTokenizer.from_pretrained(model_path, use_fast=False, trust_remote_code=trust_remote_code)
-
-
-def _requires_remote_code(model_path: str) -> bool:
-    model_path_l = str(model_path).lower()
-    return "qwen3" in model_path_l
-
-# Project-specific regression targets drawn from several evaluation dimensions
-attributes = [
-    # coherence (co_)
-    "co_discourse_structure", "co_logical_consistency", "co_mutual_grounding",
-    "co_overall_coherence_score", "co_temporal_causal_coherence", "co_topic_coherence",
-    # commonsense (cs_)
-    "cs_causality", "cs_coherence", "cs_consistency", "cs_desire",
-    "cs_empathy", "cs_reaction",
-    # empathy (em_)
-    "em_emotional_awareness", "em_emotional_validation", "em_helpful_response",
-    "em_overall_empathy_score", "em_perspective_taking", "em_supportive_engagement",
-    # multicultural (mu_)
-    "mu_coherence", "mu_cultural_specificity", "mu_cultural_value",
-    "mu_empathy", "mu_naturalness"
-]
+from attributes import ATTRIBUTES as attributes
 print(f"Using {len(attributes)} custom attributes for regression.")
 
 # Parse CLI arguments
@@ -371,4 +322,3 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-print("Stage 1 Prepare finished successfully.")
