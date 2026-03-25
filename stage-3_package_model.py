@@ -151,6 +151,8 @@ def main() -> None:
 
     model_config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=trust_remote_code)
     model_config.num_objectives = len(ATTRIBUTES)
+    model_config.gating_hidden_dim = args.hidden_size
+    model_config.gating_n_hidden = args.n_hidden
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=trust_remote_code)
 
     print("Instantiating custom architecture with base model weights...")
