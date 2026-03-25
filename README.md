@@ -161,10 +161,22 @@ python3 stage-2_train.py \
   --temperature 10.0 \
   --n_steps 2000 \
   --seed 0 \
+  --eval_every 200 \
+  --patience 5 \
   --dataset_split train \
   --eval reward-bench \
   --device 0
 ```
+
+Additional hyperparameters (defaults shown):
+- `--learning_rate 0.001` — AdamW learning rate
+- `--weight_decay 0.0` — L2 regularization
+- `--n_hidden 3` — Hidden layers in gating MLP
+- `--hidden_size 1024` — Hidden layer dimension
+- `--dropout 0.2` — Dropout probability
+- `--logit_scale 1.0` — Post-softmax scaling factor
+- `--eval_every 200` — Validation frequency (steps)
+- `--patience 5` — Early stopping patience (based on val_loss)
 
 > **Reference dataset and `debiasing_dims`:** The reference dataset is only used when `debiasing_dims` contains indices >= 0. If `debiasing_dims` is `-1` (disabled), the reference dataset will **not** be loaded or used, even if provided.
 >
@@ -204,19 +216,22 @@ python3 predict.py \
 
 ### Analyze attribute correlations
 
-Inspect inter-attribute and attribute-vs-length correlations in the scoring data. Helps decide whether `--debiasing_dim` is needed and which dimension to target.
+Inspect inter-attribute and attribute-vs-length correlations in the scoring data. Helps decide whether `--debiasing_dims` is needed and which dimensions to target.
 
 ```bash
 python3 analyze_correlations.py \
   --dataset_path data/Multi-Domain-Data-Scoring.jsonl \
-  --threshold 0.5
+  --threshold 0.3
 ```
 
 Output sections:
-- **Attribute vs response length** — Spearman correlation between each attribute and total assistant response length (characters). Flags attributes where longer responses systematically score higher/lower.
-- **Inter-attribute correlations** — Pairwise Spearman between all attributes that share non-null rows (within-domain only, since cross-domain scores are null).
-- **Dimension dominance summary** — Which attributes appear in the most high-correlation pairs (candidates for `--debiasing_dim`).
-- **Length bias warning** — Attributes whose length correlation exceeds the threshold.
+- **Attribute statistics** — Unique values, range, mean, std per attribute. Flags low-variance attributes (std < 0.10).
+- **Attribute vs response length** — Spearman correlation between each attribute and response length. Flags length-biased attributes.
+- **Inter-attribute correlations** — Pairwise Spearman between all within-domain attribute pairs.
+- **Within-domain correlation matrices** — Full NxN heatmap per domain with high-correlation markers.
+- **PCA dimensionality analysis** — Effective independent dimensions per domain (eigenvalue decomposition).
+- **Dimension dominance summary** — Which attributes appear in the most high-correlation pairs.
+- **Debiasing recommendations** — Actionable suggestions: low-variance dims, redundant pairs, length-biased dims. Outputs the attribute indices to use with `--debiasing_dims` in `stage-2_train.py`.
 
 ### Evaluate baseline (no regression)
 
@@ -289,7 +304,7 @@ model/
 │           └── <reference_dataset_name>-<split>.safetensors
 │
 ├── gating_network/
-│   └── gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_T10.0_N2000_seed0.pt
+│   └── gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t10.0_n2000_seed0.pt
 │
 ├── regression_weights/
 │   └── <model_name>_<multi_objective_dataset_name>.pt
@@ -313,7 +328,7 @@ model/
 ## Artifact Structure
 
 - `model/embeddings/<model_name>/<dataset_name>/*.safetensors`
-- `model/gating_network/gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_T10.0_N2000_seed0.pt`
+- `model/gating_network/gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t10.0_n2000_seed0.pt`
 - `model/regression_weights/<model_name>_<dataset_name>.pt`
 - `model/<packaged_model_name>/`
 
