@@ -548,10 +548,10 @@ def main():
     # --- Save model checkpoint ---
     save_dir = os.path.join(BASE_DATA_DIR, "gating_network")
     os.makedirs(save_dir, exist_ok=True)
-    # Build checkpoint name — append non-default hyperparams to avoid breaking old checkpoints
-    _hp_defaults = {"learning_rate": 0.001, "weight_decay": 0.0, "n_hidden": 3, "hidden_size": 1024, "dropout": 0.2}
+    # Build checkpoint name — include all hyperparams to guarantee unique filenames
+    _hp_defaults = {"learning_rate": 0.001, "weight_decay": 0.0, "n_hidden": 3, "hidden_size": 1024, "dropout": 0.2, "batch_size": 1024, "corr_threshold": 0.03, "logit_scale": 1.0}
     _hp_suffix = "".join(
-        f"_{k[:2]}{getattr(args, k)}" for k, v in _hp_defaults.items() if getattr(args, k) != v
+        f"_{k[:2]}{getattr(args, k)}" for k in _hp_defaults
     )
     unique_name = (
         f"gating_network_{args.model_name}_mo_{args.multi_objective_dataset_name}_"

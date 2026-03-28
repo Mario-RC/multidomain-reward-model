@@ -80,9 +80,8 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
             f"pref_{preference_base}_ref_{reference_base}"
             f"_t{getattr(args, 'temperature', 10.0):.1f}_n{getattr(args, 'n_steps', 2000)}_seed{getattr(args, 'seed', 0)}"
             + "".join(
-                f"_{k[:2]}{getattr(args, k)}" for k, v in
-                {"learning_rate": 0.001, "weight_decay": 0.0, "n_hidden": 3, "hidden_size": 1024, "dropout": 0.2}.items()
-                if getattr(args, k, v) != v
+                f"_{k[:2]}{getattr(args, k, v)}" for k, v in
+                {"learning_rate": 0.001, "weight_decay": 0.0, "n_hidden": 3, "hidden_size": 1024, "dropout": 0.2, "batch_size": 1024, "corr_threshold": 0.03, "logit_scale": 1.0}.items()
             )
             + ".pt"
         ),
@@ -119,6 +118,9 @@ def main() -> None:
     parser.add_argument("--n_hidden", type=int, default=3, help="Hidden layers used in stage-2 (for locating checkpoint).")
     parser.add_argument("--hidden_size", type=int, default=1024, help="Hidden size used in stage-2 (for locating checkpoint).")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--batch_size", type=int, default=1024, help="Batch size used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--corr_threshold", type=float, default=0.03, help="Corr threshold used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--logit_scale", type=float, default=1.0, help="Logit scale used in stage-2 (for locating checkpoint).")
     args = parser.parse_args()
 
     config = load_yaml_config(args.config_path)
@@ -153,6 +155,7 @@ def main() -> None:
     model_config.num_objectives = len(ATTRIBUTES)
     model_config.gating_hidden_dim = args.hidden_size
     model_config.gating_n_hidden = args.n_hidden
+    model_config.gating_temperature = args.temperature
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=trust_remote_code)
 
     print("Instantiating custom architecture with base model weights...")
