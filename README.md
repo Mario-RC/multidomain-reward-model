@@ -1,6 +1,6 @@
 # Multi-Domain Model
 
-This directory contains a custom version of [ArmoRM](https://github.com/RLHFlow/RLHF-Reward-Modeling/tree/main/armo-rm) adapted to train a multi-objective reward model using custom data that evaluates responses across four complementary domains: **Coherence** , **Commonsense** , **Empathy** and **Multicultural**. The model learns 23 fine-grained attributes spanning these domains and combines them through a prompt-conditioned gating network to produce a single preference score, enabling reward evaluation that captures domain-specific nuances.
+This directory contains a multi-objective reward model that evaluates responses across four complementary domains: **Coherence**, **Commonsense**, **Empathy** and **Multicultural**. The model learns 23 fine-grained attributes spanning these domains and combines them through a prompt-conditioned gating network to produce a single preference score, enabling reward evaluation that captures domain-specific nuances.
 
 ## Project Goal
 
@@ -99,84 +99,93 @@ Base script: `mdorm.sh`
 ### Stage 1 prepare
 ```bash
 python3 stage-1_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --model_family llama3 \
-  --dataset_path data/Multi-Domain-Data-Scoring \
-  --output_dataset_name Multi-Domain-Data-Scoring \
-  --dataset_split train \
-  --n_shards 1 --shard_idx 1 --device 0
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \      # Base reward model to extract embeddings from
+  --model_family llama3 \                            # Architecture family (llama3, gemma2, qwen3)
+  --dataset_path data/Multi-Domain-Data-Scoring \    # Path to multi-objective scoring dataset
+  --output_dataset_name Multi-Domain-Data-Scoring \  # Name for saved embeddings
+  --dataset_split train \                            # Dataset split to process
+  --n_shards 1 \                                     # Total shards (for parallel processing)
+  --shard_idx 1 \                                    # Current shard index
+  --device 0                                         # GPU device index
 ```
 
 ### Stage 1 train
 ```bash
 python3 stage-1_train.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --model_family llama3 \
-  --multi_objective_dataset_name Multi-Domain-Data-Scoring \
-  --dataset_split train
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \               # Base reward model (used to name outputs)
+  --model_family llama3 \                                     # Architecture family
+  --multi_objective_dataset_name Multi-Domain-Data-Scoring \  # Name of pre-computed embeddings
+  --dataset_split train                                       # Split to train on
 ```
 
 ### Stage 2 prepare (preference data)
 ```bash
 python3 stage-2_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --model_family llama3 \
-  --dataset_path data/Multi-Domain-Data-Preference-Pairs \
-  --output_dataset_name Multi-Domain-Data-Preference-Pairs \
-  --dataset_split train \
-  --n_shards 1 --shard_idx 1 --device 0
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \               # Base reward model
+  --model_family llama3 \                                     # Architecture family
+  --dataset_path data/Multi-Domain-Data-Preference-Pairs \    # Input preference pairs dataset
+  --output_dataset_name Multi-Domain-Data-Preference-Pairs \  # Name for saved embeddings
+  --dataset_split train \                                     # Dataset split to process
+  --n_shards 1 \                                              # Total shards
+  --shard_idx 1 \                                             # Current shard index
+  --device 0                                                  # GPU device index
 ```
 
 ### Stage 2 prepare (reference data)
 ```bash
 python3 stage-2_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --model_family llama3 \
-  --dataset_path RLHFlow/UltraFeedback-preference-standard \
-  --output_dataset_name UltraFeedback-preference-standard \
-  --dataset_split train \
-  --n_shards 1 --shard_idx 1 --device 0
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \               # Base reward model
+  --model_family llama3 \                                     # Architecture family
+  --dataset_path RLHFlow/UltraFeedback-preference-standard \  # Reference dataset (HuggingFace)
+  --output_dataset_name UltraFeedback-preference-standard \   # Name for saved embeddings
+  --dataset_split train \                                     # Dataset split to process
+  --n_shards 1 \                                              # Total shards
+  --shard_idx 1 \                                             # Current shard index
+  --device 0                                                  # GPU device index
 ```
 
 ### Stage 2 prepare (reward-bench eval data)
 ```bash
 python3 stage-2_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --model_family llama3 \
-  --dataset_path allenai/reward-bench \
-  --output_dataset_name reward-bench \
-  --dataset_split filtered \
-  --n_shards 1 --shard_idx 1 --device 0
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \  # Base reward model
+  --model_family llama3 \                        # Architecture family
+  --dataset_path allenai/reward-bench \          # RewardBench evaluation dataset
+  --output_dataset_name reward-bench \           # Name for saved embeddings
+  --dataset_split filtered \                     # Use filtered split
+  --n_shards 1 \                                 # Total shards
+  --shard_idx 1 \                                # Current shard index
+  --device 0                                     # GPU device index
 ```
 
 ### Stage 2 train
 ```bash
 python3 stage-2_train.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --model_family llama3 \
-  --multi_objective_dataset_name Multi-Domain-Data-Scoring \
-  --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
-  --reference_dataset_name null \
-  --debiasing_dims -1 \
-  --temperature 10.0 \
-  --n_steps 2000 \
-  --seed 0 \
-  --eval_every 200 \
-  --patience 5 \
-  --dataset_split train \
-  --eval reward-bench \
-  --device 0
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \                   # Base reward model (used for naming)
+  --model_family llama3 \                                         # Architecture family
+  --multi_objective_dataset_name Multi-Domain-Data-Scoring \      # Pre-computed embeddings for scoring data
+  --preference_dataset_name Multi-Domain-Data-Preference-Pairs \  # Pre-computed embeddings for preference pairs
+  --reference_dataset_name null \                                 # Reference dataset for debiasing (null = disabled)
+  --debiasing_dims 18 20 22 \                                     # Dims to decorrelate (mu_coherence, mu_cultural_value, mu_naturalness)
+  --temperature 2.0 \                                             # Softmax temperature for gating weights
+  --n_steps 15000 \                                               # Training steps
+  --seed 0 \                                                      # Random seed
+  --learning_rate 0.0005 \                                        # AdamW learning rate
+  --weight_decay 0.0 \                                            # L2 regularization
+  --n_hidden 1 \                                                  # Hidden layers in gating MLP
+  --hidden_size 64 \                                              # Hidden layer dimension
+  --dropout 0.2 \                                                 # Dropout probability
+  --batch_size 1024 \                                             # Training batch size
+  --corr_threshold 0.03 \                                         # Max allowed correlation after debiasing
+  --logit_scale 1.0 \                                             # Post-softmax scaling factor
+  --dataset_split train \                                         # Split to train on
+  --eval reward-bench \                                           # Eval dataset name
+  --device 0 \                                                    # GPU device index
+  --eval_every 200 \                                              # Validation frequency (steps)
+  --patience 5 \                                                  # Early stopping patience (based on val_loss)
+  --curriculum \                                                  # Enable phased curriculum learning (easy → easy+medium → all)
+  --curriculum_phase1_frac 0.30 \                                 # Fraction of n_steps for easy-only phase
+  --curriculum_phase2_frac 0.60                                   # Fraction of n_steps to end easy+medium phase
 ```
-
-Additional hyperparameters (defaults shown):
-- `--learning_rate 0.001` — AdamW learning rate
-- `--weight_decay 0.0` — L2 regularization
-- `--n_hidden 3` — Hidden layers in gating MLP
-- `--hidden_size 1024` — Hidden layer dimension
-- `--dropout 0.2` — Dropout probability
-- `--logit_scale 1.0` — Post-softmax scaling factor
-- `--eval_every 200` — Validation frequency (steps)
-- `--patience 5` — Early stopping patience (based on val_loss)
 
 > **Reference dataset and `debiasing_dims`:** The reference dataset is only used when `debiasing_dims` contains indices >= 0. If `debiasing_dims` is `-1` (disabled), the reference dataset will **not** be loaded or used, even if provided.
 >
@@ -189,29 +198,39 @@ Additional hyperparameters (defaults shown):
 ### Stage 3 Packaging Model
 ```bash
 python3 stage-3_package_model.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --model_family llama3 \
-  --multi_objective_dataset_name Multi-Domain-Data-Scoring \
-  --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
-  --reference_dataset_name null \
-  --temperature 10.0 \
-  --n_steps 2000 \
-  --seed 0 \
-  --output_model_name multi-domain-rm-llama-3-8b-it
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \                   # Base reward model to package
+  --model_family llama3 \                                         # Architecture family
+  --multi_objective_dataset_name Multi-Domain-Data-Scoring \      # Used to locate stage-1 regression weights
+  --preference_dataset_name Multi-Domain-Data-Preference-Pairs \  # Used to locate stage-2 checkpoint
+  --reference_dataset_name null \                                 # Must match value used in stage-2 training
+  --temperature 2.0 \                                             # Must match stage-2 value
+  --n_steps 15000 \                                               # Must match stage-2 value
+  --seed 0 \                                                      # Must match stage-2 value
+  --learning_rate 0.0005 \                                        # Must match stage-2 value
+  --weight_decay 0.0 \                                            # Must match stage-2 value
+  --n_hidden 1 \                                                  # Must match stage-2 value
+  --hidden_size 64 \                                              # Must match stage-2 value
+  --dropout 0.2 \                                                 # Must match stage-2 value
+  --batch_size 1024 \                                             # Must match stage-2 value
+  --corr_threshold 0.03 \                                         # Must match stage-2 value
+  --logit_scale 1.0 \                                             # Must match stage-2 value
+  --curriculum \                                                  # Use curriculum-trained stage-2 checkpoint (_cv suffix)
+  --output_model_name multi-domain-rm-llama-3-8b-it               # Name for the packaged HuggingFace model
 ```
-> `--reference_dataset_name`, `--temperature`, `--n_steps` and `--seed` must match the values used during Stage 2 training so the correct checkpoint file is found. Pass `null` for reference_dataset_name if Stage 2 was trained without a reference dataset.
+> All hyperparameters (`--temperature`, `--n_steps`, `--seed`, `--learning_rate`, `--weight_decay`, `--n_hidden`, `--hidden_size`, `--dropout`, `--batch_size`, `--corr_threshold`, `--logit_scale`) must match the values used during Stage 2 training so the correct checkpoint file is found. Pass `null` for reference_dataset_name if Stage 2 was trained without a reference dataset.
 
 ### Evaluate the packaged model
 ```bash
 python3 evaluate.py \
-  --model_name multi-domain-rm-llama-3-8b-it
+  --model_name multi-domain-rm-llama-3-8b-it-100pct \              # Name of the packaged model to evaluate
+  --compare_model_name multi-domain-rm-llama-3-8b-it-80pct         # Optional: second model to evaluate and compare
 ```
-Results are auto-saved to `model/multi-domain-rm-llama-3-8b-it/results/eval.json`.
+Results are auto-saved to `model/<model_name>/results/eval.json` for each model.
 
 ### Run quick prediction comparison
 ```bash
 python3 predict.py \
-  --model_name multi-domain-rm-llama-3-8b-it
+  --model_name multi-domain-rm-llama-3-8b-it  # Name of the packaged model to run predictions with
 ```
 
 ### Analyze attribute correlations
@@ -220,8 +239,8 @@ Inspect inter-attribute and attribute-vs-length correlations in the scoring data
 
 ```bash
 python3 analyze_correlations.py \
-  --dataset_path data/Multi-Domain-Data-Scoring.jsonl \
-  --threshold 0.3
+  --dataset_path data/Multi-Domain-Data-Scoring.jsonl \  # Path to scoring data JSONL
+  --threshold 0.3                                        # Correlation threshold to flag high-correlation pairs
 ```
 
 Output sections:
@@ -240,15 +259,16 @@ Evaluate a base reward model using its native reward score (no stage-1 regressio
 ```bash
 # Scalar RM — scoring + preference (LLaMA3, Gemma2)
 python3 evaluate_baseline.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
-  --no_regression \
-  --model_name multi-domain-rm-llama-3-8b-it
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \  # Base reward model path
+  --no_regression \                              # Use raw reward score (skip stage-1 regression weights)
+  --model_name multi-domain-rm-llama-3-8b-it     # Save results under this model's directory
 
 # Generative judge — preference only (BRRM)
 python3 evaluate_baseline.py \
-  --model_path nvidia/Qwen3-Nemotron-8B-BRRM \
-  --generative_judge --skip_scoring \
-  --model_name multi-domain-rm-qwen-3-8b-it
+  --model_path nvidia/Qwen3-Nemotron-8B-BRRM \  # Base reward model path
+  --generative_judge \                          # Use generative judge mode
+  --skip_scoring \                              # Skip scoring, preference only
+  --model_name multi-domain-rm-qwen-3-8b-it     # Save results under this model's directory
 ```
 Results are saved to `model/<model_name>/results/eval_baseline.json`.
 
@@ -258,8 +278,8 @@ Load pre-computed results from all models and produce side-by-side comparison ta
 
 ```bash
 python3 compare_models.py \
-  --model_parent_dir model \
-  --models multi-domain-rm-llama-3-8b-it multi-domain-rm-gemma-2-9b-it multi-domain-rm-qwen-3-8b-it
+  --model_parent_dir model \                                                                         # Parent directory containing model subdirectories
+  --models multi-domain-rm-llama-3-8b-it multi-domain-rm-gemma-2-9b-it multi-domain-rm-qwen-3-8b-it  # Models to compare
 ```
 
 Discovers all models in `model/` that have `results/eval.json` or `results/eval_baseline.json`. Output includes:
@@ -304,10 +324,11 @@ model/
 │           └── <reference_dataset_name>-<split>.safetensors
 │
 ├── gating_network/
-│   └── gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t10.0_n2000_seed0.pt
+│   └── gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n15000_seed0_le0.0005_we0.0_n_1_hi64_dr0.2_ba1024_co0.03_lo1.0.pt
 │
 ├── regression_weights/
-│   └── <model_name>_<multi_objective_dataset_name>.pt
+│   ├── <model_name>_<multi_objective_dataset_name>_100pct.pt
+│   └── <model_name>_<multi_objective_dataset_name>_80pct.pt
 │
 ├── multi-domain-rm-<model_name>/
 │   ├── config.json
@@ -328,8 +349,9 @@ model/
 ## Artifact Structure
 
 - `model/embeddings/<model_name>/<dataset_name>/*.safetensors`
-- `model/gating_network/gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t10.0_n2000_seed0.pt`
-- `model/regression_weights/<model_name>_<dataset_name>.pt`
+- `model/gating_network/gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n15000_seed0_le0.0005_we0.0_n_1_hi64_dr0.2_ba1024_co0.03_lo1.0.pt`
+- `model/regression_weights/<model_name>_<dataset_name>_100pct.pt`
+- `model/regression_weights/<model_name>_<dataset_name>_80pct.pt`
 - `model/<packaged_model_name>/`
 
 ---
