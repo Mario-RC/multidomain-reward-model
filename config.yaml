@@ -70,19 +70,22 @@ stage_2_train:
   eval: reward-bench
   eval_split: filtered
   device: "0"
-  learning_rate: 0.001
+  learning_rate: 0.0005
   weight_decay: 0.0
-  n_steps: 2000
+  n_steps: 15000
   batch_size: 1024
-  debiasing_dim: -1  # Disabled: set to the attribute index to decorrelate from
+  debiasing_dims: [18, 20, 22]  # mu_coherence, mu_cultural_value, mu_naturalness
   corr_threshold: 0.03
   logit_scale: 1.0
-  temperature: 10.0
-  n_hidden: 3
-  hidden_size: 1024
+  temperature: 2.0
+  n_hidden: 1
+  hidden_size: 64
   dropout: 0.2
   max_samples: null
   seed: 0
+  curriculum: false
+  curriculum_phase1_frac: 0.30
+  curriculum_phase2_frac: 0.60
 
 
 # --- Stage 3: Package final model ---
@@ -94,6 +97,17 @@ stage_3_package:
   preference_dataset_name: Multi-Domain-Data-Preference-Pairs
   reference_dataset_name: null
   model_parent_dir: model
+  temperature: 2.0
+  n_steps: 15000
+  seed: 0
+  learning_rate: 0.0005
+  weight_decay: 0.0
+  n_hidden: 1
+  hidden_size: 64
+  dropout: 0.2
+  batch_size: 1024
+  corr_threshold: 0.03
+  logit_scale: 1.0
   output_model_name: multi-domain-rm-llama-3-8b-it
 
 
