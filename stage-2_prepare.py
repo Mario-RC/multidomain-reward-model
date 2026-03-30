@@ -213,6 +213,7 @@ tokenizer = _load_tokenizer_robust(args.model_path)
 # Accumulate pair embeddings and prompt embeddings.
 embeddings = []
 prompt_embeddings = []
+difficulties = []
 
 # Process each preference pair.
 for example in tqdm(ds, desc="Examples"):  # type: ignore[arg-type]
@@ -279,10 +280,18 @@ for example in tqdm(ds, desc="Examples"):  # type: ignore[arg-type]
     if len(pair_embeddings) == 2:
         embeddings.append(torch.stack(pair_embeddings))
         prompt_embeddings.append(torch.stack(pair_prompt_embeddings))
+        diff_str = None
+        if isinstance(example.get("metadata"), dict):
+            diff_str = example["metadata"].get("difficulty")
+        if diff_str is None:
+            diff_str = example.get("difficulty")
+        _diff_map = {"easy": 0, "medium": 1, "hard": 2}
+        difficulties.append(_diff_map.get(str(diff_str).lower() if diff_str else "", 2))
 
 # Stack collected outputs into tensors.
 embeddings = torch.stack(embeddings)
 prompt_embeddings = torch.stack(prompt_embeddings)
+difficulties_tensor = torch.tensor(difficulties, dtype=torch.int8)
 
 final_dir, save_path_full = _build_save_paths(
     base_data_dir=BASE_DATA_DIR,
@@ -295,7 +304,7 @@ final_dir, save_path_full = _build_save_paths(
 
 # Save embeddings using `safetensors`.
 save_file(
-    {"embeddings": embeddings, "prompt_embeddings": prompt_embeddings},
+    {"embeddings": embeddings, "prompt_embeddings": prompt_embeddings, "difficulties": difficulties_tensor},
     save_path_full,
 )
 
