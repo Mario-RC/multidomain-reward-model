@@ -283,6 +283,8 @@ def main() -> None:
     parser.add_argument("--skip_scoring", action="store_true", help="Skip scoring evaluation.")
     parser.add_argument("--skip_preference", action="store_true", help="Skip preference evaluation.")
     parser.add_argument("--output_json", type=str, default=None, help="Save evaluation results to a JSON file.")
+    parser.add_argument("--compare_model_name", type=str, default=None, help="Name of a second packaged model to evaluate and compare against the main model.")
+    parser.add_argument("--compare_model_path", type=str, default=None, help="Path override for the second model (alternative to --compare_model_name).")
 
     args = parser.parse_args()
     config = load_yaml_config(args.config_path)
@@ -295,7 +297,7 @@ def main() -> None:
     if not args.preference_data_path:
         args.preference_data_path = "data/Multi-Domain-Data-Preference-Pairs"
 
-    # Load model
+    # Load main model
     path = _resolve_inference_model_path(config, args.model_path, args.model_parent_dir, args.model_name)
     use_cuda = torch.cuda.is_available()
     dtype = torch.bfloat16 if use_cuda else torch.float32
@@ -310,7 +312,7 @@ def main() -> None:
     model.eval()
     device = next(model.parameters()).device
 
-    # Run evaluations
+    # Run evaluations on main model
     results = {"model": path}
 
     if not args.skip_scoring:
@@ -319,25 +321,93 @@ def main() -> None:
     if not args.skip_preference:
         results["preference"] = evaluate_preference(model, tokenizer, args.preference_data_path, device, args.max_length, args.max_samples)
 
-    # Save results to JSON — always save to model results dir, optionally also to custom path.
-    output_paths = []
-    if args.output_json:
-        output_paths.append(args.output_json)
+    # --- Optional comparison model ---
+    compare_path = args.compare_model_path or (
+        _resolve_inference_model_path(config, None, args.model_parent_dir, args.compare_model_name)
+        if args.compare_model_name else None
+    )
+    results_cmp = None
+    if compare_path:
+        print(f"\n{'=' * 70}")
+        print(f"  COMPARISON MODEL: {compare_path}")
+        print(f"{'=' * 70}")
+        model_cmp = RewardModelWithGating.from_pretrained(
+            compare_path,
+            device_map={"": 0} if use_cuda else None,
+            dtype=dtype,
+        )
+        tokenizer_cmp = AutoTokenizer.from_pretrained(compare_path, use_fast=True)
+        model_cmp.eval()
+        device_cmp = next(model_cmp.parameters()).device
 
-    # Auto-save to model/<model_name>/results/eval.json
+        results_cmp = {"model": compare_path}
+        if not args.skip_scoring:
+            results_cmp["scoring"] = evaluate_scoring(model_cmp, tokenizer_cmp, args.scoring_data_path, device_cmp, args.max_length, args.max_samples)
+        if not args.skip_preference:
+            results_cmp["preference"] = evaluate_preference(model_cmp, tokenizer_cmp, args.preference_data_path, device_cmp, args.max_length, args.max_samples)
+
+        del model_cmp
+
+        # Print side-by-side comparison summary
+        print(f"\n{'=' * 70}")
+        print(f"  COMPARISON SUMMARY")
+        print(f"{'=' * 70}")
+        m1_label = os.path.basename(path.rstrip("/"))
+        m2_label = os.path.basename(compare_path.rstrip("/"))
+        print(f"  {'Metric':<30} {m1_label:>20} {m2_label:>20}")
+        print(f"  {'-' * 72}")
+
+        if not args.skip_scoring:
+            avg1 = results.get("scoring", {}).get("average", {})
+            avg2 = results_cmp.get("scoring", {}).get("average", {})
+            for metric in ("mse", "pearson", "spearman"):
+                v1 = avg1.get(metric)
+                v2 = avg2.get(metric)
+                s1 = f"{v1:.4f}" if v1 is not None else "—"
+                s2 = f"{v2:.4f}" if v2 is not None else "—"
+                print(f"  {'scoring_' + metric:<30} {s1:>20} {s2:>20}")
+
+        if not args.skip_preference:
+            pref1 = results.get("preference", {})
+            pref2 = results_cmp.get("preference", {})
+            v1 = pref1.get("accuracy")
+            v2 = pref2.get("accuracy")
+            s1 = f"{v1:.2f}%" if v1 is not None else "—"
+            s2 = f"{v2:.2f}%" if v2 is not None else "—"
+            print(f"  {'preference_accuracy':<30} {s1:>20} {s2:>20}")
+
+    # Save results to JSON — each model gets its own eval.json.
     model_name = args.model_name
     if not model_name:
-        # Try to infer from the resolved path
         model_name = os.path.basename(path.rstrip("/"))
-    auto_json = os.path.join(args.model_parent_dir, model_name, "results", "eval.json")
-    if auto_json not in output_paths:
-        output_paths.append(auto_json)
 
-    for out_path in output_paths:
-        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
-        print(f"\n  Results saved to {out_path}")
+    # Auto-save main model results
+    auto_json = os.path.join(args.model_parent_dir, model_name, "results", "eval.json")
+    os.makedirs(os.path.dirname(auto_json) or ".", exist_ok=True)
+    with open(auto_json, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+    print(f"\n  Results saved to {auto_json}")
+
+    # Auto-save compare model results to its own dir
+    if results_cmp:
+        cmp_name = args.compare_model_name
+        if not cmp_name:
+            cmp_name = os.path.basename(compare_path.rstrip("/"))
+        cmp_json = os.path.join(args.model_parent_dir, cmp_name, "results", "eval.json")
+        os.makedirs(os.path.dirname(cmp_json) or ".", exist_ok=True)
+        with open(cmp_json, "w", encoding="utf-8") as f:
+            json.dump(results_cmp, f, indent=2, ensure_ascii=False)
+        print(f"  Results saved to {cmp_json}")
+
+    # Optional custom output path
+    if args.output_json:
+        os.makedirs(os.path.dirname(args.output_json) or ".", exist_ok=True)
+        payload = {"main": results}
+        if results_cmp:
+            payload["compare"] = results_cmp
+        with open(args.output_json, "w", encoding="utf-8") as f:
+            json.dump(payload if results_cmp else results, f, indent=2, ensure_ascii=False)
+        print(f"  Results saved to {args.output_json}")
 
     return results
 
