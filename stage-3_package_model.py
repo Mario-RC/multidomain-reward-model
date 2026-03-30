@@ -70,7 +70,7 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
             reference_base = _ref_cfg
 
     stage1_weights_path = os.path.join(
-        "model", "regression_weights", f"{model_name}_{multi_objective_dataset_name}.pt"
+        "model", "regression_weights", f"{model_name}_{multi_objective_dataset_name}_100pct.pt"
     )
     stage2_weights_path = os.path.join(
         "model",
@@ -83,6 +83,7 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
                 f"_{k[:2]}{getattr(args, k, v)}" for k, v in
                 {"learning_rate": 0.001, "weight_decay": 0.0, "n_hidden": 3, "hidden_size": 1024, "dropout": 0.2, "batch_size": 1024, "corr_threshold": 0.03, "logit_scale": 1.0}.items()
             )
+            + ("_cv" if getattr(args, "curriculum", False) else "")
             + ".pt"
         ),
     )
@@ -121,6 +122,7 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=1024, help="Batch size used in stage-2 (for locating checkpoint).")
     parser.add_argument("--corr_threshold", type=float, default=0.03, help="Corr threshold used in stage-2 (for locating checkpoint).")
     parser.add_argument("--logit_scale", type=float, default=1.0, help="Logit scale used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--curriculum", action="store_true", default=False, help="Include _curriculum suffix when locating stage-2 checkpoint.")
     args = parser.parse_args()
 
     config = load_yaml_config(args.config_path)

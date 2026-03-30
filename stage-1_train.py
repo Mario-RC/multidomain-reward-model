@@ -135,6 +135,8 @@ try:
     )
     print(f"Training set size: {X_train.shape[0]}")
     print(f"Validation set size: {X_val.shape[0]}")
+    X_full = np.concatenate([X_train, X_val], axis=0)
+    Y_full = np.concatenate([Y_train, Y_val], axis=0)
     del embeddings, labels
 except Exception as e:
     print(f"FATAL ERROR: Failed during train/validation split: {e}")
@@ -154,6 +156,7 @@ print("Training Ridge regression models for each attribute...")
 print(f"  {'Attribute':<45} {'Alpha':>8} {'Val MSE':>10} {'Pearson':>10} {'Spearman':>10} {'N_val':>8}")
 print(f"  {'-'*45} {'-'*8} {'-'*10} {'-'*10} {'-'*10} {'-'*8}")
 final_weights_dict = {}
+final_weights_dict_80pct = {}
 any_trained = False
 
 for attr_idx in tqdm(range(Y_train.shape[1]), desc="Training Attributes"):
@@ -197,7 +200,17 @@ for attr_idx in tqdm(range(Y_train.shape[1]), desc="Training Attributes"):
         print(f"  Warning: No valid model for '{attribute_name}'. Skipping.")
         continue
 
-    final_weights_dict[attr_idx] = best_clf.coef_
+    # Retrain with best alpha on full data (train + val) for final weights.
+    y_full_attr = Y_full[:, attr_idx]
+    valid_mask_full = ~np.isnan(y_full_attr)
+    try:
+        final_clf = Ridge(alpha=best_alpha, fit_intercept=False, solver='cholesky')
+        final_clf.fit(X_full[valid_mask_full], y_full_attr[valid_mask_full])
+        final_weights_dict[attr_idx] = final_clf.coef_
+    except Exception as e:
+        print(f"  Warning: Failed to retrain '{attribute_name}' on full data: {e}. Using 80% weights.")
+        final_weights_dict[attr_idx] = best_clf.coef_
+    final_weights_dict_80pct[attr_idx] = best_clf.coef_
     any_trained = True
 
     pearson_r = np.nan
@@ -214,19 +227,23 @@ if not any_trained:
     print("FATAL ERROR: No attributes were trained successfully.")
     sys.exit(1)
 
-# Ensure each attribute has a weight vector
+# Ensure each attribute has a weight vector (100% and 80% variants).
 final_weights_list = []
+final_weights_list_80pct = []
 embedding_dim = X_train.shape[1]
 for attr_idx in range(len(attributes)):
+    zero = np.zeros(embedding_dim, dtype=np.float32)
     if attr_idx in final_weights_dict:
         final_weights_list.append(final_weights_dict[attr_idx])
     else:
         print(f"Warning: Attribute {attr_idx} ({attributes[attr_idx]}) had no valid model. Using zero vector as weights.")
-        final_weights_list.append(np.zeros(embedding_dim, dtype=np.float32))
+        final_weights_list.append(zero)
+    final_weights_list_80pct.append(final_weights_dict_80pct.get(attr_idx, zero))
 
 # Stack weights
 try:
     weights_array = np.stack(final_weights_list)
+    weights_array_80pct = np.stack(final_weights_list_80pct)
     print(f"\nFinal regression weights matrix shape: {weights_array.shape}")
     if weights_array.shape[0] != len(attributes):
         print(f"FATAL ERROR: Weight rows ({weights_array.shape[0]}) != attributes ({len(attributes)}).")
@@ -254,15 +271,23 @@ except OSError as e:
     print(f"FATAL ERROR: Could not create output directory {save_dir}: {e}")
     sys.exit(1)
 
-save_path_weights = os.path.join(save_dir, f"{args.model_name}_{args.multi_objective_dataset_name}.pt")
+save_path_weights = os.path.join(save_dir, f"{args.model_name}_{args.multi_objective_dataset_name}_100pct.pt")
+save_path_weights_80pct = os.path.join(save_dir, f"{args.model_name}_{args.multi_objective_dataset_name}_80pct.pt")
 
-print(f"Saving regression weights to {save_path_weights}")
+print(f"Saving 100% regression weights to {save_path_weights}")
 try:
     torch.save({"weight": torch.from_numpy(weights_array)}, save_path_weights)
-    print("Regression weights saved successfully.")
+    print("100% regression weights saved successfully.")
 except Exception as e:
     print(f"FATAL ERROR: Failed to save weights file to {save_path_weights}: {e}")
     traceback.print_exc()
     sys.exit(1)
+
+print(f"Saving 80% regression weights to {save_path_weights_80pct}")
+try:
+    torch.save({"weight": torch.from_numpy(weights_array_80pct)}, save_path_weights_80pct)
+    print("80% regression weights saved successfully.")
+except Exception as e:
+    print(f"Warning: Failed to save 80% weights file to {save_path_weights_80pct}: {e}")
 
 # --- END ---
