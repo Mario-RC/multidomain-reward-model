@@ -203,7 +203,7 @@ def load_embeddings(embedding_path_pattern):
     if not file_paths:
         raise ValueError(f"No embedding files found matching pattern: {embedding_path_pattern}")
 
-    embeddings_list, prompt_embeddings_list = [], []
+    embeddings_list, prompt_embeddings_list, difficulties_list = [], [], []
     print(f"Loading {len(file_paths)} embedding file(s) matching pattern: ...{os.path.basename(embedding_path_pattern)}")  # Keep log compact.
 
     for embedding_path in file_paths:
@@ -215,6 +215,8 @@ def load_embeddings(embedding_path_pattern):
                 continue
             embeddings_list.append(embeddings_data["embeddings"])
             prompt_embeddings_list.append(embeddings_data["prompt_embeddings"])
+            if "difficulties" in embeddings_data:
+                difficulties_list.append(embeddings_data["difficulties"])
         except Exception as e:
             print(f"Warning: Failed to load or process file {embedding_path}: {e}")
             continue  # Skip corrupted or unreadable files.
@@ -225,8 +227,9 @@ def load_embeddings(embedding_path_pattern):
     # Concatenate on CPU and cast to float32 for consistency.
     embeddings_cpu = torch.cat(embeddings_list, dim=0).float()
     prompt_embeddings_cpu = torch.cat(prompt_embeddings_list, dim=0).float()
+    difficulties_cpu = torch.cat(difficulties_list, dim=0) if len(difficulties_list) == len(embeddings_list) else None
     print(f"Successfully loaded a total of {len(embeddings_cpu)} embedding pairs into CPU RAM.")
-    return embeddings_cpu, prompt_embeddings_cpu
+    return embeddings_cpu, prompt_embeddings_cpu, difficulties_cpu
 
 
 # ----------------------------
@@ -261,6 +264,9 @@ def main():
     parser.add_argument("--eval_every", type=int, default=200, help="Evaluate on validation set every N steps")
     parser.add_argument("--patience", type=int, default=5, help="Early stopping patience (number of evaluations without improvement)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
+    parser.add_argument("--curriculum", action="store_true", default=False, help="Enable phased curriculum learning: easy → easy+medium → all")
+    parser.add_argument("--curriculum_phase1_frac", type=float, default=0.20, help="Fraction of n_steps for easy-only phase (default: 0.20)")
+    parser.add_argument("--curriculum_phase2_frac", type=float, default=0.50, help="Fraction of n_steps to end easy+medium phase (default: 0.50)")
     args = parser.parse_args()
 
     config = load_yaml_config(args.config_path)
@@ -304,7 +310,7 @@ def main():
     )
     # Regression weights file path.
     regression_layer_path = os.path.join(
-        BASE_DATA_DIR, "regression_weights", f"{args.model_name}_{args.multi_objective_dataset_name}.pt"
+        BASE_DATA_DIR, "regression_weights", f"{args.model_name}_{args.multi_objective_dataset_name}_100pct.pt"
     )
     # Eval dataset embeddings path pattern.
     eval_embedding_path_pattern = None
@@ -329,13 +335,15 @@ def main():
     # Load data to CPU with robust error handling.
     try:
         print("Loading preference embeddings (to CPU RAM)...")
-        embeddings_cpu, prompt_embeddings_cpu = load_embeddings(preference_embedding_path_pattern)
+        embeddings_cpu, prompt_embeddings_cpu, difficulties_cpu = load_embeddings(preference_embedding_path_pattern)
 
         if args.max_samples is not None and args.max_samples < len(embeddings_cpu):
             print(f"NOTE: Subsetting preference data to first {args.max_samples} samples.")
             indices = torch.arange(args.max_samples)
             embeddings_cpu = embeddings_cpu[indices]
             prompt_embeddings_cpu = prompt_embeddings_cpu[indices]
+            if difficulties_cpu is not None:
+                difficulties_cpu = difficulties_cpu[indices]
 
         print("Loading regression layer (to device)...")
         regression_layer = torch.load(regression_layer_path, map_location=device, weights_only=True)["weight"].float()
@@ -345,7 +353,7 @@ def main():
         _debiasing_requested = any(d >= 0 for d in args.debiasing_dims)
         if _debiasing_requested:
             print("Loading reference embeddings for debiasing (to CPU RAM)...")
-            ref_embeddings_cpu, _ = load_embeddings(reference_embedding_path_pattern)
+            ref_embeddings_cpu, _, _ = load_embeddings(reference_embedding_path_pattern)
 
             if args.max_samples is not None and args.max_samples < len(ref_embeddings_cpu):
                 print(f"NOTE: Subsetting reference data to first {args.max_samples} samples.")
@@ -411,16 +419,40 @@ def main():
     # Keep dataset tensors on CPU; move mini-batches on demand.
     X_cpu = prompt_embeddings_cpu
     Z_cpu = embeddings_cpu
+    D_cpu = difficulties_cpu  # may be None if embeddings were generated without difficulty labels
 
     # Split train/validation sets on CPU.
     print("Splitting data into train/validation sets (CPU)...")
-    X_train_cpu, X_val_cpu, Z_train_cpu, Z_val_cpu = train_test_split(
-        X_cpu, Z_cpu, test_size=0.2, random_state=args.seed, shuffle=True
-    )
+    if D_cpu is not None:
+        X_train_cpu, X_val_cpu, Z_train_cpu, Z_val_cpu, D_train_cpu, _ = train_test_split(
+            X_cpu, Z_cpu, D_cpu, test_size=0.2, random_state=args.seed, shuffle=True
+        )
+    else:
+        X_train_cpu, X_val_cpu, Z_train_cpu, Z_val_cpu = train_test_split(
+            X_cpu, Z_cpu, test_size=0.2, random_state=args.seed, shuffle=True
+        )
+        D_train_cpu = None
     print(f"Train size: {len(X_train_cpu)}, Validation size: {len(X_val_cpu)}")
 
+    # Build curriculum phase index pools and phase boundaries.
+    easy_indices = None
+    easy_medium_indices = None
+    curriculum_phase1_end = int(args.n_steps * args.curriculum_phase1_frac)
+    curriculum_phase2_end = int(args.n_steps * args.curriculum_phase2_frac)
+    if args.curriculum:
+        if D_train_cpu is not None:
+            easy_indices = torch.where(D_train_cpu == 0)[0]
+            easy_medium_indices = torch.where(D_train_cpu <= 1)[0]
+            print(f"Curriculum enabled — easy: {len(easy_indices)}, easy+medium: {len(easy_medium_indices)}, all: {len(X_train_cpu)}")
+            if len(easy_indices) == 0:
+                print("Warning: No 'easy' examples found in training set. Disabling curriculum.")
+                args.curriculum = False
+        else:
+            print("Warning: No difficulty labels in embeddings. Disabling curriculum (re-run stage-2_prepare to generate them).")
+            args.curriculum = False
+
     # Release original large CPU tensors after split.
-    del embeddings_cpu, prompt_embeddings_cpu, ref_embeddings_cpu, X_cpu, Z_cpu
+    del embeddings_cpu, prompt_embeddings_cpu, ref_embeddings_cpu, X_cpu, Z_cpu, D_cpu
     torch.cuda.empty_cache()  # Hint CUDA allocator to release cached blocks.
 
     print(f"Batch size: {args.batch_size}")
@@ -436,7 +468,11 @@ def main():
     # Optimizer, loss, and scheduler.
     loss_fn = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(gating_network.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.n_steps)
+    if args.curriculum:
+        # Per-phase cosine schedule with warm restarts at phase boundaries.
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(curriculum_phase1_end, 1))
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.n_steps)
     # Choose AMP dtype based on hardware support.
     amp_dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
     scaler = torch.amp.GradScaler(enabled=(device.type == 'cuda'))
@@ -479,7 +515,36 @@ def main():
         optimizer.zero_grad(set_to_none=True)
 
         # Sample CPU indices for this step.
-        idx = torch.randint(0, X_train_cpu.shape[0], (args.batch_size,), device="cpu")
+        if args.curriculum:
+            if step < curriculum_phase1_end:
+                pool = easy_indices
+            elif step < curriculum_phase2_end:
+                pool = easy_medium_indices
+            else:
+                pool = None
+            if pool is not None:
+                idx = pool[torch.randint(0, len(pool), (args.batch_size,), device="cpu")]
+            else:
+                idx = torch.randint(0, X_train_cpu.shape[0], (args.batch_size,), device="cpu")
+        else:
+            idx = torch.randint(0, X_train_cpu.shape[0], (args.batch_size,), device="cpu")
+
+        # Warm restart LR at phase transitions.
+        if args.curriculum:
+            if step == curriculum_phase1_end:
+                phase2_steps = max(curriculum_phase2_end - curriculum_phase1_end, 1)
+                for pg in optimizer.param_groups:
+                    pg['lr'] = args.learning_rate
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=phase2_steps)
+                evals_without_improvement = 0
+                print(f"  Phase 2 started at step {step} — LR warm restart to {args.learning_rate}")
+            elif step == curriculum_phase2_end:
+                phase3_steps = max(args.n_steps - curriculum_phase2_end, 1)
+                for pg in optimizer.param_groups:
+                    pg['lr'] = args.learning_rate
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=phase3_steps)
+                evals_without_improvement = 0
+                print(f"  Phase 3 started at step {step} — LR warm restart to {args.learning_rate}")
 
         # Transfer only the current mini-batch to device.
         X_batch = X_train_cpu[idx].to(device, non_blocking=True)
@@ -553,9 +618,10 @@ def main():
     _hp_suffix = "".join(
         f"_{k[:2]}{getattr(args, k)}" for k in _hp_defaults
     )
+    _curr_suffix = "_cv" if args.curriculum else ""
     unique_name = (
         f"gating_network_{args.model_name}_mo_{args.multi_objective_dataset_name}_"
-        f"pref_{pref_base}_ref_{ref_base}_t{args.temperature:.1f}_n{args.n_steps}_seed{args.seed}{_hp_suffix}"
+        f"pref_{pref_base}_ref_{ref_base}_t{args.temperature:.1f}_n{args.n_steps}_seed{args.seed}{_hp_suffix}{_curr_suffix}"
     )
     save_path = os.path.join(save_dir, f"{unique_name}.pt")
     torch.save({
@@ -569,7 +635,7 @@ def main():
         print(f"Evaluating on {args.eval}...")
         all_correct_flags_rb_list = []
         try:
-            rb_embeddings_cpu, rb_prompt_embeddings_cpu = load_embeddings(eval_embedding_path_pattern)
+            rb_embeddings_cpu, rb_prompt_embeddings_cpu, _ = load_embeddings(eval_embedding_path_pattern)
         except ValueError as e:
             print(f"Warning: Could not load RewardBench embeddings: {e}. Skipping evaluation.")
         else:
