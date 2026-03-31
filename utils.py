@@ -58,6 +58,50 @@ def _resolve_jsonl_path(path: str) -> str:
     raise FileNotFoundError(f"Dataset not found: {path} (also tried {candidate})")
 
 
+def load_cultural_test(data_dir: str) -> list[dict]:
+    """Load all JSON cultural test files from *data_dir* and return a flat list of records."""
+    records: list[dict] = []
+    if not os.path.isdir(data_dir):
+        return records
+    for fname in sorted(os.listdir(data_dir)):
+        if not fname.endswith(".json"):
+            continue
+        with open(os.path.join(data_dir, fname), "r", encoding="utf-8") as f:
+            rows = json.load(f)
+        records.extend(rows)
+    return records
+
+
+def parse_cultural_conversation(record: dict) -> list[dict]:
+    """Parse a cultural test record's conversation field into chat messages.
+
+    Maps the first speaker to 'user', the second to 'assistant', and merges
+    consecutive turns from the same speaker.
+    """
+    conv = record.get("conversation", "")
+    lines = conv.split("\\n")
+    messages: list[dict] = []
+    speakers: dict[str, str] = {}
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        idx = line.find(": ")
+        if idx <= 0:
+            continue
+        speaker_id = line[:idx]
+        text = line[idx + 2:]
+        if speaker_id not in speakers:
+            speakers[speaker_id] = "user" if len(speakers) == 0 else "assistant"
+        role = speakers[speaker_id]
+        if messages and messages[-1]["role"] == role:
+            messages[-1]["content"] += "\n" + text
+        else:
+            messages.append({"role": role, "content": text})
+    return messages
+
+
 def load_jsonl_test(path: str) -> list[dict]:
     """Load all records whose split == 'test' from a JSONL file."""
     path = _resolve_jsonl_path(path)
