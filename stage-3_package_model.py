@@ -131,7 +131,10 @@ def main() -> None:
         args.model_path = stage3_cfg.get("model_path")
 
     inferred_stage1, inferred_stage2, inferred_output = _build_defaults_from_config(config, args.model_path, args)
-    stage_1_weights_path = args.stage_1_weights_path or inferred_stage1
+    if args.stage_1_weights_path and os.path.sep not in args.stage_1_weights_path:
+        stage_1_weights_path = os.path.join("model", "regression_weights", args.stage_1_weights_path)
+    else:
+        stage_1_weights_path = args.stage_1_weights_path or inferred_stage1
     stage_2_weights_path = args.stage_2_weights_path or inferred_stage2
     inferred_parent = os.path.dirname(inferred_output)
     inferred_name = os.path.basename(inferred_output)

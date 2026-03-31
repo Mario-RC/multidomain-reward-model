@@ -264,6 +264,7 @@ def main():
     parser.add_argument("--eval_every", type=int, default=200, help="Evaluate on validation set every N steps")
     parser.add_argument("--patience", type=int, default=5, help="Early stopping patience (number of evaluations without improvement)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
+    parser.add_argument("--stage_1_weights_path", type=str, default=None, help="Optional override for Stage 1 regression weights path (default: auto-resolved _100pct.pt)")
     parser.add_argument("--curriculum", action="store_true", default=False, help="Enable phased curriculum learning: easy → easy+medium → all")
     parser.add_argument("--curriculum_phase1_frac", type=float, default=0.20, help="Fraction of n_steps for easy-only phase (default: 0.20)")
     parser.add_argument("--curriculum_phase2_frac", type=float, default=0.50, help="Fraction of n_steps to end easy+medium phase (default: 0.50)")
@@ -309,9 +310,15 @@ def main():
         BASE_DATA_DIR, "embeddings", args.model_name, args.preference_dataset_name, "*.safetensors"
     )
     # Regression weights file path.
-    regression_layer_path = os.path.join(
-        BASE_DATA_DIR, "regression_weights", f"{args.model_name}_{args.multi_objective_dataset_name}_100pct.pt"
-    )
+    if args.stage_1_weights_path:
+        if os.path.sep not in args.stage_1_weights_path:
+            regression_layer_path = os.path.join(BASE_DATA_DIR, "regression_weights", args.stage_1_weights_path)
+        else:
+            regression_layer_path = args.stage_1_weights_path
+    else:
+        regression_layer_path = os.path.join(
+            BASE_DATA_DIR, "regression_weights", f"{args.model_name}_{args.multi_objective_dataset_name}_100pct.pt"
+        )
     # Eval dataset embeddings path pattern.
     eval_embedding_path_pattern = None
     if args.eval:
