@@ -407,10 +407,8 @@ def main() -> None:
     parser.add_argument("--max_samples", type=int, default=None, help="Cap per evaluation (for quick debugging).")
     parser.add_argument("--skip_scoring", action="store_true", help="Skip scoring evaluation.")
     parser.add_argument("--skip_preference", action="store_true", help="Skip preference evaluation.")
-    parser.add_argument("--eval", type=str, default=None, help="Path to cultural test JSON directory (e.g. data/test). Enables cultural evaluation.")
+    parser.add_argument("--eval", type=str, default=None, help="Path to test data directory or JSONL file (e.g. data/test). Evaluates with scoring metrics.")
     parser.add_argument("--output_json", type=str, default=None, help="Save evaluation results to a JSON file.")
-    parser.add_argument("--compare_model_name", type=str, default=None, help="Name of a second packaged model to evaluate and compare against the main model.")
-    parser.add_argument("--compare_model_path", type=str, default=None, help="Path override for the second model (alternative to --compare_model_name).")
 
     args = parser.parse_args()
     config = load_yaml_config(args.config_path)
@@ -423,122 +421,113 @@ def main() -> None:
     if not args.preference_data_path:
         args.preference_data_path = "data/Multi-Domain-Data-Preference-Pairs"
 
-    # Load main model
-    path = _resolve_inference_model_path(config, args.model_path, args.model_parent_dir, args.model_name)
+    # Resolve single model path
+    model_path = _resolve_inference_model_path(config, args.model_path, args.model_parent_dir, args.model_name)
+    model_label = args.model_name or os.path.basename(model_path.rstrip("/"))
+
+    # Load training metadata saved by stage-3 (discover stage-1 / stage-2 paths).
+    metadata_file = os.path.join(model_path, "training_metadata.json")
+    if os.path.isfile(metadata_file):
+        with open(metadata_file, "r", encoding="utf-8") as f:
+            training_metadata = json.load(f)
+        print(f"  Training metadata:")
+        print(f"    Base model:      {training_metadata.get('base_model_path')}")
+        print(f"    Stage-1 weights: {training_metadata.get('stage_1_weights_path')}")
+        print(f"    Stage-2 weights: {training_metadata.get('stage_2_weights_path')}")
+    else:
+        training_metadata = {}
+
+    # Derive stage-1 weight paths (100pct and 80pct) from metadata.
+    stage1_100pct_path = training_metadata.get("stage_1_weights_path")
+    stage1_80pct_path = stage1_100pct_path.replace("_100pct.pt", "_80pct.pt") if stage1_100pct_path else None
+
     use_cuda = torch.cuda.is_available()
     dtype = torch.bfloat16 if use_cuda else torch.float32
 
-    print(f"Loading model: {path}")
+    print(f"\n{'#' * 70}")
+    print(f"  Evaluating: {model_label}")
+    print(f"  Model: {model_path}")
+    print(f"{'#' * 70}")
+
+    print(f"Loading model: {model_path}")
     model = RewardModelWithGating.from_pretrained(
-        path,
+        model_path,
         device_map={"": 0} if use_cuda else None,
         dtype=dtype,
     )
-    tokenizer = AutoTokenizer.from_pretrained(path, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     model.eval()
     device = next(model.parameters()).device
 
-    # Run evaluations on main model
-    results = {"model": path}
+    results = {"model": model_path}
+    if training_metadata:
+        results["training_metadata"] = training_metadata
 
+    # ------------------------------------------------------------------
+    # Scoring evaluation — stage-1 regression weights (80pct then 100pct)
+    # Evaluate 80pct first, then load 100pct so it stays for stage-3.
+    # ------------------------------------------------------------------
     if not args.skip_scoring:
-        results["scoring"] = evaluate_scoring(model, tokenizer, args.scoring_data_path, device, args.max_length, args.max_samples)
+        swapped_to_80 = False
 
-    if not args.skip_preference:
-        results["preference"] = evaluate_preference(model, tokenizer, args.preference_data_path, device, args.max_length, args.max_samples)
+        # --- 80pct scoring ---
+        if stage1_80pct_path and os.path.isfile(stage1_80pct_path):
+            print(f"\n  Loading 80pct weights: {stage1_80pct_path}")
+            payload_80 = torch.load(stage1_80pct_path, map_location="cpu", weights_only=True)
+            w80 = payload_80["weight"] if isinstance(payload_80, dict) and "weight" in payload_80 else payload_80
+            model.regression_layer.weight.data.copy_(w80.to(model.regression_layer.weight.dtype))
+            swapped_to_80 = True
+            results["scoring_80pct"] = evaluate_scoring(
+                model, tokenizer, args.scoring_data_path, device, args.max_length, args.max_samples
+            )
+        elif stage1_80pct_path:
+            print(f"  WARNING: 80pct weights not found at {stage1_80pct_path}, skipping 80pct scoring.")
 
-    if args.eval:
-        results["cultural"] = evaluate_cultural(model, tokenizer, args.eval, device, args.max_length)
-
-    # --- Optional comparison model ---
-    compare_path = args.compare_model_path or (
-        _resolve_inference_model_path(config, None, args.model_parent_dir, args.compare_model_name)
-        if args.compare_model_name else None
-    )
-    results_cmp = None
-    if compare_path:
-        print(f"\n{'=' * 70}")
-        print(f"  COMPARISON MODEL: {compare_path}")
-        print(f"{'=' * 70}")
-        model_cmp = RewardModelWithGating.from_pretrained(
-            compare_path,
-            device_map={"": 0} if use_cuda else None,
-            dtype=dtype,
+        # --- 100pct scoring (stays loaded for stage-3) ---
+        if swapped_to_80:
+            # Reload 100pct from disk since we swapped to 80pct.
+            print(f"\n  Loading 100pct weights: {stage1_100pct_path}")
+            payload_100 = torch.load(stage1_100pct_path, map_location="cpu", weights_only=True)
+            w100 = payload_100["weight"] if isinstance(payload_100, dict) and "weight" in payload_100 else payload_100
+            model.regression_layer.weight.data.copy_(w100.to(model.regression_layer.weight.dtype))
+        else:
+            print(f"\n  Stage-1 scoring with 100pct weights (packaged)")
+        results["scoring_100pct"] = evaluate_scoring(
+            model, tokenizer, args.scoring_data_path, device, args.max_length, args.max_samples
         )
-        tokenizer_cmp = AutoTokenizer.from_pretrained(compare_path, use_fast=True)
-        model_cmp.eval()
-        device_cmp = next(model_cmp.parameters()).device
 
-        results_cmp = {"model": compare_path}
-        if not args.skip_scoring:
-            results_cmp["scoring"] = evaluate_scoring(model_cmp, tokenizer_cmp, args.scoring_data_path, device_cmp, args.max_length, args.max_samples)
-        if not args.skip_preference:
-            results_cmp["preference"] = evaluate_preference(model_cmp, tokenizer_cmp, args.preference_data_path, device_cmp, args.max_length, args.max_samples)
-        if args.eval:
-            results_cmp["cultural"] = evaluate_cultural(model_cmp, tokenizer_cmp, args.eval, device_cmp, args.max_length)
+    # ------------------------------------------------------------------
+    # Preference evaluation — full stage-3 model (regression + gating)
+    # ------------------------------------------------------------------
+    if not args.skip_preference:
+        results["preference"] = evaluate_preference(
+            model, tokenizer, args.preference_data_path, device, args.max_length, args.max_samples
+        )
 
-        del model_cmp
+    # ------------------------------------------------------------------
+    # Cultural evaluation — full stage-3 model (regression + gating)
+    # ------------------------------------------------------------------
+    if args.eval:
+        results["cultural"] = evaluate_cultural(
+            model, tokenizer, args.eval, device, args.max_length
+        )
 
-        # Print side-by-side comparison summary
-        print(f"\n{'=' * 70}")
-        print(f"  COMPARISON SUMMARY")
-        print(f"{'=' * 70}")
-        m1_label = os.path.basename(path.rstrip("/"))
-        m2_label = os.path.basename(compare_path.rstrip("/"))
-        print(f"  {'Metric':<30} {m1_label:>20} {m2_label:>20}")
-        print(f"  {'-' * 72}")
-
-        if not args.skip_scoring:
-            avg1 = results.get("scoring", {}).get("average", {})
-            avg2 = results_cmp.get("scoring", {}).get("average", {})
-            for metric in ("mse", "pearson", "spearman"):
-                v1 = avg1.get(metric)
-                v2 = avg2.get(metric)
-                s1 = f"{v1:.4f}" if v1 is not None else "—"
-                s2 = f"{v2:.4f}" if v2 is not None else "—"
-                print(f"  {'scoring_' + metric:<30} {s1:>20} {s2:>20}")
-
-        if not args.skip_preference:
-            pref1 = results.get("preference", {})
-            pref2 = results_cmp.get("preference", {})
-            v1 = pref1.get("accuracy")
-            v2 = pref2.get("accuracy")
-            s1 = f"{v1:.2f}%" if v1 is not None else "—"
-            s2 = f"{v2:.2f}%" if v2 is not None else "—"
-            print(f"  {'preference_accuracy':<30} {s1:>20} {s2:>20}")
-
-    # Save results to JSON — each model gets its own eval.json.
-    model_name = args.model_name
-    if not model_name:
-        model_name = os.path.basename(path.rstrip("/"))
-
-    # Auto-save main model results
-    auto_json = os.path.join(args.model_parent_dir, model_name, "results", "eval.json")
+    # Save results
+    auto_json = os.path.join(model_path, "results", "eval.json")
     os.makedirs(os.path.dirname(auto_json) or ".", exist_ok=True)
     with open(auto_json, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     print(f"\n  Results saved to {auto_json}")
 
-    # Auto-save compare model results to its own dir
-    if results_cmp:
-        cmp_name = args.compare_model_name
-        if not cmp_name:
-            cmp_name = os.path.basename(compare_path.rstrip("/"))
-        cmp_json = os.path.join(args.model_parent_dir, cmp_name, "results", "eval.json")
-        os.makedirs(os.path.dirname(cmp_json) or ".", exist_ok=True)
-        with open(cmp_json, "w", encoding="utf-8") as f:
-            json.dump(results_cmp, f, indent=2, ensure_ascii=False)
-        print(f"  Results saved to {cmp_json}")
-
-    # Optional custom output path
     if args.output_json:
         os.makedirs(os.path.dirname(args.output_json) or ".", exist_ok=True)
-        payload = {"main": results}
-        if results_cmp:
-            payload["compare"] = results_cmp
         with open(args.output_json, "w", encoding="utf-8") as f:
-            json.dump(payload if results_cmp else results, f, indent=2, ensure_ascii=False)
-        print(f"  Results saved to {args.output_json}")
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        print(f"  Combined results saved to {args.output_json}")
+
+    del model
+    if use_cuda:
+        torch.cuda.empty_cache()
 
     return results
 
