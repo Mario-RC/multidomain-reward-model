@@ -159,13 +159,13 @@ def _resolve_inference_model_path(
         model_name = cli_model_name or inference_cfg.get("model_name")
         if not model_name:
             raise ValueError("model_name must be provided via --model_name or config.yaml inference.model_name")
-        return f"./{model_parent_dir}/{str(model_name)}"
+        return os.path.join(model_parent_dir, str(model_name))
 
     model_name = inference_cfg.get("model_name")
     if not model_name:
         raise ValueError("model_name must be provided via --model_name or config.yaml inference.model_name")
     model_parent_dir = str(inference_cfg.get("model_parent_dir", "model"))
-    return f"./{model_parent_dir}/{str(model_name)}"
+    return os.path.join(model_parent_dir, str(model_name))
 
 
 # ---------------------------------------------------------------------------
