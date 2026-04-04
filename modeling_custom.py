@@ -11,10 +11,11 @@ from utils import TOKEN_PATTERNS_BY_MODEL_TYPE, find_token_for_gating
 
 class GatingNetwork(nn.Module):
     def __init__(self, in_features: int, out_features: int, bias: bool = True, temperature: float = 10,
-                 logit_scale: float = 1., hidden_dim: int = 1024, n_hidden: int = 3):
+                 logit_scale: float = 1., hidden_dim: int = 1024, n_hidden: int = 3, dropout: float = 0.0):
         super().__init__()
         self.temperature = temperature
         self.logit_scale = nn.Parameter(torch.ones(1) * logit_scale)
+        self.dropout_prob = dropout
         layers = []
         for _ in range(n_hidden):
             layers.append(nn.Linear(in_features, hidden_dim))
@@ -23,12 +24,14 @@ class GatingNetwork(nn.Module):
         self.layers = nn.ModuleList(layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Apply hidden layers with ReLU and leave the last layer linear.
         for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x)) if i < len(self.layers) - 1 else layer(x)
-        # Temperature controls distribution sharpness over objectives.
+            x = layer(x)
+            if i < len(self.layers) - 1:
+                x = F.relu(x)
+                if self.dropout_prob > 0 and self.training:
+                    x = F.dropout(x, p=self.dropout_prob)
         x = F.softmax(x / self.temperature, dim=-1)
-        return x * self.logit_scale[0]
+        return x * self.logit_scale
 
 @dataclass
 class CustomOutput(ModelOutput):
