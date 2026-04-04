@@ -79,10 +79,10 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
         (
             f"gating_network_{model_name}_mo_{multi_objective_dataset_name}_"
             f"pref_{preference_base}_ref_{reference_base}"
-            f"_t{getattr(args, 'temperature', 10.0):.1f}_n{getattr(args, 'n_steps', 2000)}_seed{getattr(args, 'seed', 0)}"
+            f"_t{getattr(args, 'temperature', 2.0):.1f}_n{getattr(args, 'n_steps', 30000)}_seed{getattr(args, 'seed', 0)}"
             + "".join(
                 f"_{k[:2]}{getattr(args, k, v)}" for k, v in
-                {"learning_rate": 0.001, "weight_decay": 0.0, "n_hidden": 3, "hidden_size": 1024, "dropout": 0.2, "batch_size": 1024, "corr_threshold": 0.03, "logit_scale": 1.0}.items()
+                {"learning_rate": 0.0005, "weight_decay": 0.0, "n_hidden": 1, "hidden_size": 64, "dropout": 0.1, "batch_size": 2048, "corr_threshold": 0.04, "logit_scale": 2.0}.items()
             )
             + ("_cv" if getattr(args, "curriculum", False) else "")
             + ".pt"
@@ -112,17 +112,17 @@ def main() -> None:
     parser.add_argument("--output_model_name", type=str, default=None, help="Optional packaged model directory name.")
     parser.add_argument("--output_dir", type=str, default=None, help="Optional override for final packaged model output directory.")
     parser.add_argument("--model_family", type=str, default=None, help="Model family (llama3, gemma2, qwen3, auto).")
-    parser.add_argument("--temperature", type=float, default=10.0, help="Temperature used in stage-2 training (for locating checkpoint).")
-    parser.add_argument("--n_steps", type=int, default=2000, help="Number of steps used in stage-2 training (for locating checkpoint).")
+    parser.add_argument("--temperature", type=float, default=2.0, help="Temperature used in stage-2 training (for locating checkpoint).")
+    parser.add_argument("--n_steps", type=int, default=30000, help="Number of steps used in stage-2 training (for locating checkpoint).")
     parser.add_argument("--seed", type=int, default=0, help="Seed used in stage-2 training (for locating checkpoint).")
-    parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--learning_rate", type=float, default=0.0005, help="Learning rate used in stage-2 (for locating checkpoint).")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay used in stage-2 (for locating checkpoint).")
-    parser.add_argument("--n_hidden", type=int, default=3, help="Hidden layers used in stage-2 (for locating checkpoint).")
-    parser.add_argument("--hidden_size", type=int, default=1024, help="Hidden size used in stage-2 (for locating checkpoint).")
-    parser.add_argument("--dropout", type=float, default=0.2, help="Dropout used in stage-2 (for locating checkpoint).")
-    parser.add_argument("--batch_size", type=int, default=1024, help="Batch size used in stage-2 (for locating checkpoint).")
-    parser.add_argument("--corr_threshold", type=float, default=0.03, help="Corr threshold used in stage-2 (for locating checkpoint).")
-    parser.add_argument("--logit_scale", type=float, default=1.0, help="Logit scale used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--n_hidden", type=int, default=1, help="Hidden layers used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--hidden_size", type=int, default=64, help="Hidden size used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--batch_size", type=int, default=2048, help="Batch size used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--corr_threshold", type=float, default=0.04, help="Corr threshold used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--logit_scale", type=float, default=2.0, help="Logit scale used in stage-2 (for locating checkpoint).")
     parser.add_argument("--curriculum", action="store_true", default=False, help="Include _curriculum suffix when locating stage-2 checkpoint.")
     args = parser.parse_args()
 
