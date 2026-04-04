@@ -65,14 +65,16 @@ def _has_at_least_one_attribute_score(example: dict) -> bool:
     return False
 
 
-def _is_train_split(example: dict) -> bool:
-    """Keep only samples explicitly marked as train; default to keep when missing."""
+def _keep_split(example: dict, target_split: str) -> bool:
+    """Keep samples matching target_split; keep all when target is 'all'."""
+    if target_split == "all":
+        return True
     split_value = example.get("split")
     if split_value is None and isinstance(example.get("metadata"), dict):
         split_value = example["metadata"].get("split")
     if split_value is None:
         return True
-    return str(split_value).lower() == "train"
+    return str(split_value).lower() == target_split
 
 
 def _render_chat_text(tokenizer, messages):
@@ -153,7 +155,7 @@ if local_dataset_file is not None:
         for line in f:
             try:
                 record = json.loads(line.strip())
-                if not _is_train_split(record):
+                if not _keep_split(record, args.dataset_split.lower()):
                     skipped_non_train_split += 1
                     continue
                 if _has_at_least_one_attribute_score(record):
@@ -188,11 +190,12 @@ else:
         ds = datasets.load_dataset(args.dataset_path, split=args.dataset_split)
         assert isinstance(ds, datasets.Dataset)
 
-# Keep only train split rows when a split column exists.
-if "split" in ds.column_names:
+# Keep only matching split rows when a split column exists.
+_target_split = args.dataset_split.lower()
+if "split" in ds.column_names and _target_split != "all":
     original_len = len(ds)
-    ds = ds.filter(lambda x: str(x.get("split", "train")).lower() == "train")
-    print(f"Filtered dataset by split=train: kept {len(ds)} of {original_len} rows.")
+    ds = ds.filter(lambda x: str(x.get("split", "train")).lower() == _target_split)
+    print(f"Filtered dataset by split={_target_split}: kept {len(ds)} of {original_len} rows.")
 if args.source is not None:
     ds = ds.filter(lambda x: x["source"] == args.source)
 if args.n_shards > 1:
@@ -200,12 +203,12 @@ if args.n_shards > 1:
     ds = ds.shard(num_shards=args.n_shards, index=args.shard_idx - 1)
 
 # Load encoder model and tokenizer.
-device = f"cuda:{args.device}"
+device = f"cuda:{args.device}" if torch.cuda.is_available() and args.device >= 0 else "cpu"
 model = AutoModel.from_pretrained(
     args.model_path,
-    dtype=torch.bfloat16,  # bf16 reduces memory footprint on supported GPUs.
+    dtype=torch.bfloat16 if device != "cpu" else torch.float32,
     device_map=device,
-    attn_implementation="flash_attention_2",  # Use FlashAttention v2 when available.
+    attn_implementation="flash_attention_2" if device != "cpu" else None,
     trust_remote_code=_requires_remote_code(args.model_path),
 )
 tokenizer = _load_tokenizer_robust(args.model_path)
