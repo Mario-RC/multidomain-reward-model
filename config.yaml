@@ -66,30 +66,29 @@ stage_2_train:
   multi_objective_dataset_name: Multi-Domain-Data-Scoring
   preference_dataset_name: Multi-Domain-Data-Preference-Pairs
   reference_dataset_name: null
+  debiasing_dims: [18, 20, 22]  # mu_coherence, mu_cultural_value, mu_naturalness
+  temperature: 2.0
+  n_steps: 30000
+  seed: 0
+  n_hidden: 1
+  hidden_size: 64
+  learning_rate: 0.0005
+  weight_decay: 0.0
+  dropout: 0.1
+  batch_size: 2048
+  corr_threshold: 0.04
+  logit_scale: 2.0
+  eval_every: 200
+  patience: 15
+  curriculum: true
+  curriculum_phase1_frac: 0.20
+  curriculum_phase2_frac: 0.50
   dataset_split: train
   eval: reward-bench
   eval_split: filtered
   device: "0"
-  learning_rate: 0.0005
-  weight_decay: 0.0
-  n_steps: 15000
-  batch_size: 1024
-  debiasing_dims: [18, 20, 22]  # mu_coherence, mu_cultural_value, mu_naturalness
-  corr_threshold: 0.03
-  logit_scale: 1.0
-  temperature: 2.0
-  n_hidden: 1
-  hidden_size: 64
-  dropout: 0.2
   max_samples: null
-  seed: 0
-  eval_split: filtered
-  eval_every: 200
-  patience: 5
   stage_1_weights_path: null
-  curriculum: false
-  curriculum_phase1_frac: 0.30
-  curriculum_phase2_frac: 0.60
 
 
 # --- Stage 3: Package final model ---
@@ -100,20 +99,20 @@ stage_3_package:
   multi_objective_dataset_name: Multi-Domain-Data-Scoring
   preference_dataset_name: Multi-Domain-Data-Preference-Pairs
   reference_dataset_name: null
-  model_parent_dir: model
   temperature: 2.0
-  n_steps: 15000
+  n_steps: 30000
   seed: 0
-  learning_rate: 0.0005
-  weight_decay: 0.0
   n_hidden: 1
   hidden_size: 64
-  dropout: 0.2
-  batch_size: 1024
-  corr_threshold: 0.03
-  logit_scale: 1.0
+  learning_rate: 0.0005
+  weight_decay: 0.0
+  dropout: 0.1
+  batch_size: 2048
+  corr_threshold: 0.04
+  logit_scale: 2.0
+  curriculum: true
+  model_parent_dir: model
   stage_1_weights_path: null
-  curriculum: false
   output_model_name: multi-domain-rm-llama-3-8b-it
 
 

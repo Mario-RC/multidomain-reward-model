@@ -54,26 +54,26 @@ CUDA_VISIBLE_DEVICES=0 python3 stage-2_train.py \
   --multi_objective_dataset_name Multi-Domain-Data-Scoring \
   --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
   --reference_dataset_name null \
-  --debiasing_dims -1 \
-  --temperature 10.0 \
-  --n_steps 2000 \
+  --debiasing_dims 18 20 22 \
+  --temperature 2.0 \
+  --n_steps 30000 \
   --seed 0 \
-  --learning_rate 0.001 \
+  --n_hidden 1 \
+  --hidden_size 64 \
+  --learning_rate 0.0005 \
   --weight_decay 0.0 \
-  --n_hidden 3 \
-  --hidden_size 1024 \
-  --dropout 0.2 \
-  --batch_size 1024 \
-  --corr_threshold 0.03 \
-  --logit_scale 1.0 \
-  --dataset_split train \
-  --eval reward-bench \
-  --device 0 \
+  --dropout 0.1 \
+  --batch_size 2048 \
+  --corr_threshold 0.04 \
+  --logit_scale 2.0 \
   --eval_every 200 \
-  --patience 5 \
+  --patience 15 \
   --curriculum \
   --curriculum_phase1_frac 0.20 \
-  --curriculum_phase2_frac 0.50
+  --curriculum_phase2_frac 0.50 \
+  --dataset_split train \
+  --eval reward-bench \
+  --device 0
 
 ##########################################
 ### stage 3 packaging model ###
@@ -83,17 +83,17 @@ CUDA_VISIBLE_DEVICES=0 python3 stage-3_package_model.py \
   --multi_objective_dataset_name Multi-Domain-Data-Scoring \
   --preference_dataset_name Multi-Domain-Data-Preference-Pairs \
   --reference_dataset_name null \
-  --temperature 10.0 \
-  --n_steps 2000 \
+  --temperature 2.0 \
+  --n_steps 30000 \
   --seed 0 \
-  --learning_rate 0.001 \
+  --n_hidden 1 \
+  --hidden_size 64 \
+  --learning_rate 0.0005 \
   --weight_decay 0.0 \
-  --n_hidden 3 \
-  --hidden_size 1024 \
-  --dropout 0.2 \
-  --batch_size 1024 \
-  --corr_threshold 0.03 \
-  --logit_scale 1.0 \
+  --dropout 0.1 \
+  --batch_size 2048 \
+  --corr_threshold 0.04 \
+  --logit_scale 2.0 \
   --curriculum \
   --output_model_name multi-domain-rm-llama-3-8b-it
 

@@ -173,24 +173,24 @@ python3 stage-2_train.py \
   --reference_dataset_name null \                                 # Reference dataset for debiasing (null = disabled)
   --debiasing_dims 18 20 22 \                                     # Dims to decorrelate (mu_coherence, mu_cultural_value, mu_naturalness)
   --temperature 2.0 \                                             # Softmax temperature for gating weights
-  --n_steps 15000 \                                               # Training steps
+  --n_steps 30000 \                                               # Training steps
   --seed 0 \                                                      # Random seed
-  --learning_rate 0.0005 \                                        # AdamW learning rate
-  --weight_decay 0.0 \                                            # L2 regularization
   --n_hidden 1 \                                                  # Hidden layers in gating MLP
   --hidden_size 64 \                                              # Hidden layer dimension
-  --dropout 0.2 \                                                 # Dropout probability
-  --batch_size 1024 \                                             # Training batch size
-  --corr_threshold 0.03 \                                         # Max allowed correlation after debiasing
-  --logit_scale 1.0 \                                             # Post-softmax scaling factor
-  --dataset_split train \                                         # Split to train on
-  --eval reward-bench \                                           # Eval dataset name
-  --device 0 \                                                    # GPU device index
+  --learning_rate 0.0005 \                                        # AdamW learning rate
+  --weight_decay 0.0 \                                            # L2 regularization
+  --dropout 0.1 \                                                 # Dropout probability
+  --batch_size 2048 \                                             # Training batch size
+  --corr_threshold 0.04 \                                         # Max allowed correlation after debiasing
+  --logit_scale 2.0 \                                             # Post-softmax scaling factor
   --eval_every 200 \                                              # Validation frequency (steps)
-  --patience 5 \                                                  # Early stopping patience (based on val_loss)
+  --patience 15 \                                                 # Early stopping patience (based on val_loss)
   --curriculum \                                                  # Enable phased curriculum learning (easy → easy+medium → all)
   --curriculum_phase1_frac 0.20 \                                 # Fraction of n_steps for easy-only phase
-  --curriculum_phase2_frac 0.50                                   # Fraction of n_steps to end easy+medium phase
+  --curriculum_phase2_frac 0.50 \                                 # Fraction of n_steps to end easy+medium phase
+  --dataset_split train \                                         # Split to train on
+  --eval reward-bench \                                           # Eval dataset name
+  --device 0                                                      # GPU device index
 ```
 
 > **`--stage_1_weights_path` (optional):** Override which Stage 1 regression weights to load. If omitted, auto-resolves to `model/regression_weights/{model_name}_{multi_objective_dataset_name}_100pct.pt`. If a bare filename is given (no `/`), the `_100pct` suffix is appended automatically unless the name already ends with `_100pct.pt` or `_80pct.pt`.
@@ -212,20 +212,20 @@ python3 stage-3_package_model.py \
   --preference_dataset_name Multi-Domain-Data-Preference-Pairs \  # Used to locate stage-2 checkpoint
   --reference_dataset_name null \                                 # Must match value used in stage-2 training
   --temperature 2.0 \                                             # Must match stage-2 value
-  --n_steps 15000 \                                               # Must match stage-2 value
+  --n_steps 30000 \                                               # Must match stage-2 value
   --seed 0 \                                                      # Must match stage-2 value
-  --learning_rate 0.0005 \                                        # Must match stage-2 value
-  --weight_decay 0.0 \                                            # Must match stage-2 value
   --n_hidden 1 \                                                  # Must match stage-2 value
   --hidden_size 64 \                                              # Must match stage-2 value
-  --dropout 0.2 \                                                 # Must match stage-2 value
-  --batch_size 1024 \                                             # Must match stage-2 value
-  --corr_threshold 0.03 \                                         # Must match stage-2 value
-  --logit_scale 1.0 \                                             # Must match stage-2 value
-  --curriculum \                                                  # Use curriculum-trained stage-2 checkpoint (_cv suffix)
+  --learning_rate 0.0005 \                                        # Must match stage-2 value
+  --weight_decay 0.0 \                                            # Must match stage-2 value
+  --dropout 0.1 \                                                 # Must match stage-2 value
+  --batch_size 2048 \                                             # Must match stage-2 value
+  --corr_threshold 0.04 \                                         # Must match stage-2 value
+  --logit_scale 2.0 \                                             # Must match stage-2 value
+  --curriculum \                                                  # Must match stage-2 value (adds _cv suffix to checkpoint name)
   --output_model_name multi-domain-rm-llama-3-8b-it               # Name for the packaged HuggingFace model
 ```
-> All hyperparameters (`--temperature`, `--n_steps`, `--seed`, `--learning_rate`, `--weight_decay`, `--n_hidden`, `--hidden_size`, `--dropout`, `--batch_size`, `--corr_threshold`, `--logit_scale`) must match the values used during Stage 2 training so the correct checkpoint file is found. Pass `null` for reference_dataset_name if Stage 2 was trained without a reference dataset.
+> All hyperparameters (`--temperature`, `--n_steps`, `--seed`, `--learning_rate`, `--weight_decay`, `--n_hidden`, `--hidden_size`, `--dropout`, `--batch_size`, `--corr_threshold`, `--logit_scale`) must match the values used during Stage 2 training so the correct checkpoint file is found. Pass `null` for reference_dataset_name if Stage 2 was trained without a reference dataset. If Stage 2 was trained with `--curriculum`, add `--curriculum` here too so the `_cv` suffix is included in the checkpoint filename.
 >
 > **`--stage_1_weights_path` (optional):** Same auto-resolution logic as Stage 2 — defaults to `_100pct.pt` if omitted.
 
@@ -336,7 +336,7 @@ model/
 │           └── <reference_dataset_name>-<split>.safetensors
 │
 ├── gating_network/
-│   └── gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n15000_seed0_le0.0005_we0.0_n_1_hi64_dr0.2_ba1024_co0.03_lo1.0.pt
+│   └── gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n30000_seed0_le0.0005_we0.0_n_1_hi64_dr0.1_ba2048_co0.04_lo2.0.pt
 │
 ├── regression_weights/
 │   ├── <model_name>_<multi_objective_dataset_name>_100pct.pt
@@ -361,7 +361,7 @@ model/
 ## Artifact Structure
 
 - `model/embeddings/<model_name>/<dataset_name>/*.safetensors`
-- `model/gating_network/gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n15000_seed0_le0.0005_we0.0_n_1_hi64_dr0.2_ba1024_co0.03_lo1.0.pt`
+- `model/gating_network/gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n30000_seed0_le0.0005_we0.0_n_1_hi64_dr0.1_ba2048_co0.04_lo2.0.pt`
 - `model/regression_weights/<model_name>_<dataset_name>_100pct.pt`
 - `model/regression_weights/<model_name>_<dataset_name>_80pct.pt`
 - `model/<packaged_model_name>/`
