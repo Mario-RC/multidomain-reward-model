@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 from transformers import AutoConfig, AutoTokenizer
 from modeling_custom import RewardModelWithGating
-from config_utils import load_yaml_config
+from config_utils import load_yaml_config, apply_section_overrides
 from attributes import ATTRIBUTES
 from utils import _requires_remote_code
 
@@ -128,6 +128,7 @@ def main() -> None:
 
     config = load_yaml_config(args.config_path)
     stage3_cfg = config.get("stage_3_package", {}) or {}
+    args = apply_section_overrides(args, stage3_cfg)
     if not args.model_path:
         args.model_path = stage3_cfg.get("model_path")
 
