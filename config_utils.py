@@ -23,6 +23,10 @@ def load_yaml_config(config_path: str) -> Dict[str, Any]:
 
 
 def apply_section_overrides(args, section_cfg: Dict[str, Any], argv=None, skip_keys=None):
+    """Apply YAML overrides for keys not explicitly passed on the CLI.
+
+    Priority: CLI flag > YAML value > argparse default.
+    """
     if not section_cfg:
         return args
     skip = set(skip_keys or [])
@@ -33,7 +37,6 @@ def apply_section_overrides(args, section_cfg: Dict[str, Any], argv=None, skip_k
             continue
         if value is None:
             continue
-        flag = f"--{key}"
-        if not cli_has_flag(flag, argv=argv):
+        if not cli_has_flag(f"--{key}", argv=argv):
             setattr(args, key, value)
     return args

@@ -80,7 +80,7 @@ stage_2_train:
   logit_scale: 2.0
   eval_every: 200
   patience: 15
-  curriculum: true
+  curriculum: false
   curriculum_phase1_frac: 0.20
   curriculum_phase2_frac: 0.50
   dataset_split: train
@@ -110,7 +110,7 @@ stage_3_package:
   batch_size: 2048
   corr_threshold: 0.04
   logit_scale: 2.0
-  curriculum: true
+  curriculum: false
   model_parent_dir: model
   stage_1_weights_path: null
   output_model_name: multi-domain-rm-llama-3-8b-it
