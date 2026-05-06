@@ -97,12 +97,19 @@ Base script: `mdorm.sh`
 
 `mdorm.sh` is intentionally fixed to Llama3 defaults for a stable baseline run.
 
+Additional per-model scripts are available for full train/package/evaluate runs:
+
+- `mdorm_llama3.sh`
+- `mdorm_gemma2.sh`
+- `mdorm_qwen3.sh`
+- `mdorm_mistral.sh`
+
 ### Stage 1 prepare
 ```bash
 python3 stage-1_prepare.py \
   --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \      # Base reward model to extract embeddings from
-  --model_family llama3 \                            # Architecture family (llama3, gemma2, qwen3)
-  --dataset_path data/Multi-Domain-Data-Scoring \    # Path to multi-objective scoring dataset
+  --model_family llama3 \                            # Architecture family (llama3, gemma2, qwen3, mistral)
+  --dataset_path data/dataset/Multi-Domain-Data-Scoring \    # Path to multi-objective scoring dataset
   --output_dataset_name Multi-Domain-Data-Scoring \  # Name for saved embeddings
   --dataset_split train \                            # Dataset split to process
   --n_shards 1 \                                     # Total shards (for parallel processing)
@@ -130,7 +137,7 @@ python3 stage-1_train.py \
 python3 stage-2_prepare.py \
   --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \               # Base reward model
   --model_family llama3 \                                     # Architecture family
-  --dataset_path data/Multi-Domain-Data-Preference-Pairs \    # Input preference pairs dataset
+  --dataset_path data/dataset/Multi-Domain-Data-Preference-Pairs \    # Input preference pairs dataset
   --output_dataset_name Multi-Domain-Data-Preference-Pairs \  # Name for saved embeddings
   --dataset_split train \                                     # Dataset split to process
   --n_shards 1 \                                              # Total shards
@@ -252,7 +259,7 @@ Inspect inter-attribute and attribute-vs-length correlations in the scoring data
 
 ```bash
 python3 analyze_correlations.py \
-  --dataset_path data/Multi-Domain-Data-Scoring.jsonl \  # Path to scoring data JSONL
+  --dataset_path data/dataset/Multi-Domain-Data-Scoring.jsonl \  # Path to scoring data JSONL
   --threshold 0.3                                        # Correlation threshold to flag high-correlation pairs
 ```
 

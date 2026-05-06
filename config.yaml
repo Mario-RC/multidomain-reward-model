@@ -21,7 +21,7 @@
 stage_1_prepare:
   model_path: sfairXC/FsfairX-LLaMA3-RM-v0.1
   model_family: llama3
-  dataset_path: data/Multi-Domain-Data-Scoring
+  dataset_path: data/dataset/Multi-Domain-Data-Scoring
   output_dataset_name: Multi-Domain-Data-Scoring
   dataset_split: train
   n_shards: 1
@@ -44,15 +44,15 @@ stage_1_train:
 #
 #  Dataset         │ dataset_path                              │ output_dataset_name                │ dataset_split
 #  ────────────────┼───────────────────────────────────────────┼────────────────────────────────────┼──────────────
-#  multi-objective │ data/Multi-Domain-Data-Scoring            │ Multi-Domain-Data-Scoring          │ train
-#  preference      │ data/Multi-Domain-Data-Preference-Pairs   │ Multi-Domain-Data-Preference-Pairs │ train
+#  multi-objective │ data/dataset/Multi-Domain-Data-Scoring            │ Multi-Domain-Data-Scoring          │ train
+#  preference      │ data/dataset/Multi-Domain-Data-Preference-Pairs   │ Multi-Domain-Data-Preference-Pairs │ train
 #  reference       │ RLHFlow/UltraFeedback-preference-standard │ UltraFeedback-preference-standard  │ train
 #  reward-bench    │ allenai/reward-bench                      │ reward-bench                       │ filtered
 
 stage_2_prepare:
   model_path: sfairXC/FsfairX-LLaMA3-RM-v0.1
   model_family: llama3
-  dataset_path: data/Multi-Domain-Data-Preference-Pairs
+  dataset_path: data/dataset/Multi-Domain-Data-Preference-Pairs
   output_dataset_name: Multi-Domain-Data-Preference-Pairs
   dataset_split: train
   source: null
@@ -128,7 +128,7 @@ inference:
 # --- Analyze attribute correlations ---
 
 analyze_correlations:
-  dataset_path: data/Multi-Domain-Data-Scoring.jsonl
+  dataset_path: data/dataset/Multi-Domain-Data-Scoring.jsonl
   threshold: 0.5
 
 # --- Compare models ---
@@ -149,8 +149,8 @@ evaluate_baseline:
   model_path: sfairXC/FsfairX-LLaMA3-RM-v0.1
   model_name: multi-domain-rm-llama-3-8b-it
   model_parent_dir: model
-  scoring_data_path: data/Multi-Domain-Data-Scoring
-  preference_data_path: data/Multi-Domain-Data-Preference-Pairs
+  scoring_data_path: data/dataset/Multi-Domain-Data-Scoring
+  preference_data_path: data/dataset/Multi-Domain-Data-Preference-Pairs
   eval: null  # Path to cultural test data directory (e.g. data/test)
   max_length: 4096
   max_samples: null

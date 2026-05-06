@@ -60,8 +60,8 @@ parser = ArgumentParser(description="Stage 1 Prepare: Extract embeddings and lab
 parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
 parser.add_argument("--model_key", type=str, default=None, help="Model key defined in config.yaml:model:registry.")
 parser.add_argument("--model_path", type=str, default=None, help="Path or HF ID of the base Reward Model.")
-parser.add_argument("--model_family", type=str, default="llama3", help="Model family (llama3, gemma2, qwen3, auto)")
-parser.add_argument("--dataset_path", type=str, nargs='+', default=None, help="Path(s) to local JSON/JSONL files. Extension is optional (e.g. data/Multi-Domain-Data-Scoring).")
+parser.add_argument("--model_family", type=str, default="llama3", help="Model family (llama3, gemma2, qwen3, mistral, auto)")
+parser.add_argument("--dataset_path", type=str, nargs='+', default=None, help="Path(s) to local JSON/JSONL files. Extension is optional (e.g. data/dataset/Multi-Domain-Data-Scoring).")
 parser.add_argument("--output_dataset_name", type=str, default=None, help="Unique name for the output dataset folder/file prefix.")
 parser.add_argument("--dataset_split", type=str, default="train", help="Dataset split tag for filtering/naming (e.g., train, all).")
 parser.add_argument("--n_shards", type=int, default=1, help="Total number of shards to divide the dataset into.")
@@ -321,4 +321,3 @@ except Exception as e:
     print(f"FATAL ERROR: Failed to save safetensors file to {save_path_full}: {e}")
     traceback.print_exc()
     sys.exit(1)
-

@@ -21,5 +21,10 @@ logs/
 mdorm_*.sh
 
 # large raw data files (keep templates/configs only)
-data/Multi-Domain-Data-Scoring.jsonl
-data/Multi-Domain-Data-Preference-Pairs.jsonl
+data/dataset/Multi-Domain-Data-Scoring.jsonl
+data/dataset/Multi-Domain-Data-Preference-Pairs.jsonl
+
+# generated plots, internal experiment notes, eval test data
+data/plots/
+data/test/
+test.txt

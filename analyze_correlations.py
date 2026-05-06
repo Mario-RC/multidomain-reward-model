@@ -22,7 +22,7 @@ Correlation method:
 
 Usage:
     python3 analyze_correlations.py
-    python3 analyze_correlations.py --dataset_path data/Multi-Domain-Data-Scoring.jsonl --threshold 0.3
+    python3 analyze_correlations.py --dataset_path data/dataset/Multi-Domain-Data-Scoring.jsonl --threshold 0.3
 """
 
 import json
@@ -277,7 +277,7 @@ def compute_attribute_stats(scores_by_attr):
 def main():
     print(f"\n### Analyze correlations started at {datetime.now().isoformat()} ###")
     parser = ArgumentParser(description="Analyze attribute correlations and length bias in scoring data.")
-    parser.add_argument("--dataset_path", type=str, default="data/Multi-Domain-Data-Scoring.jsonl",
+    parser.add_argument("--dataset_path", type=str, default="data/dataset/Multi-Domain-Data-Scoring.jsonl",
                         help="Path to the Multi-Domain-Data-Scoring JSONL file.")
     parser.add_argument("--threshold", type=float, default=0.3,
                         help="Flag attribute pairs with |corr| above this value.")

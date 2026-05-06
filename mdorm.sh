@@ -5,7 +5,7 @@
 CUDA_VISIBLE_DEVICES=0 python3 stage-1_prepare.py \
   --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
   --model_family llama3 \
-  --dataset_path data/Multi-Domain-Data-Scoring \
+  --dataset_path data/dataset/Multi-Domain-Data-Scoring \
   --output_dataset_name Multi-Domain-Data-Scoring \
   --dataset_split train \
   --n_shards 1 --shard_idx 1 --device 0
@@ -23,7 +23,7 @@ CUDA_VISIBLE_DEVICES=0 python3 stage-1_train.py \
 CUDA_VISIBLE_DEVICES=0 python3 stage-2_prepare.py \
   --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
   --model_family llama3 \
-  --dataset_path data/Multi-Domain-Data-Preference-Pairs \
+  --dataset_path data/dataset/Multi-Domain-Data-Preference-Pairs \
   --output_dataset_name Multi-Domain-Data-Preference-Pairs \
   --dataset_split train \
   --n_shards 1 --shard_idx 1 --device 0
@@ -111,7 +111,7 @@ CUDA_VISIBLE_DEVICES=0 python3 predict.py \
 ##########################################
 ### analyze attribute correlations ###
 CUDA_VISIBLE_DEVICES=0 python3 analyze_correlations.py \
-  --dataset_path data/Multi-Domain-Data-Scoring.jsonl \
+  --dataset_path data/dataset/Multi-Domain-Data-Scoring.jsonl \
   --threshold 0.5
 
 ##########################################

@@ -481,8 +481,8 @@ def main() -> None:
     parser.add_argument("--model_name", type=str, default=None, help="Packaged model directory name.")
 
     # Data
-    parser.add_argument("--scoring_data_path", type=str, default=None, help="Path to Multi-Domain-Data-Scoring[.jsonl]. Default: from config or data/Multi-Domain-Data-Scoring.")
-    parser.add_argument("--preference_data_path", type=str, default=None, help="Path to Multi-Domain-Data-Preference-Pairs[.jsonl]. Default: from config or data/Multi-Domain-Data-Preference-Pairs.")
+    parser.add_argument("--scoring_data_path", type=str, default=None, help="Path to Multi-Domain-Data-Scoring[.jsonl]. Default: from config or data/dataset/Multi-Domain-Data-Scoring.")
+    parser.add_argument("--preference_data_path", type=str, default=None, help="Path to Multi-Domain-Data-Preference-Pairs[.jsonl]. Default: from config or data/dataset/Multi-Domain-Data-Preference-Pairs.")
 
     # Eval control
     parser.add_argument("--max_length", type=int, default=4096, help="Max sequence length for tokenization.")
@@ -502,10 +502,10 @@ def main() -> None:
     # Resolve data paths from config fallbacks
     if not args.scoring_data_path:
         s1_cfg = config.get("stage_1_prepare", {})
-        args.scoring_data_path = s1_cfg.get("dataset_path", "data/Multi-Domain-Data-Scoring")
+        args.scoring_data_path = s1_cfg.get("dataset_path", "data/dataset/Multi-Domain-Data-Scoring")
 
     if not args.preference_data_path:
-        args.preference_data_path = "data/Multi-Domain-Data-Preference-Pairs"
+        args.preference_data_path = "data/dataset/Multi-Domain-Data-Preference-Pairs"
 
     # Resolve single model path
     model_path = _resolve_inference_model_path(config, args.model_path, args.model_parent_dir, args.model_name)
