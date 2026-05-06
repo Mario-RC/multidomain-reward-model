@@ -11,6 +11,7 @@
 #  │ llama3  │ sfairXC/FsfairX-LLaMA3-RM-v0.1 │ multi-domain-rm-llama-3-8b-it │
 #  │ gemma2  │ sfairXC/FsfairX-Gemma2-RM-v0.1 │ multi-domain-rm-gemma-2-9b-it │
 #  │ qwen3   │ nvidia/Qwen3-Nemotron-8B-BRRM  │ multi-domain-rm-qwen-3-8b-it  │
+#  │ mistral │ weqweasdas/RM-Mistral-7B       │ multi-domain-rm-mistral-7b-it │
 #  └─────────┴────────────────────────────────┴───────────────────────────────┘
 # ================================================================================
 

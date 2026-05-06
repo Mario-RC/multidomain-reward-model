@@ -189,14 +189,16 @@ TOKEN_PATTERNS_BY_MODEL_TYPE = {
     "llama":  [128009, 128006, 78191, 128007, 271],
     # Gemma2: "<end_of_turn>\n<start_of_turn>model\n"
     "gemma2": [107, 108, 106, 2516, 108],
+    # Mistral Instruct: "[/INST]" marks the start of the assistant response.
+    "mistral": [733, 28748, 16289, 28793],
 }
 
 
 def find_token_for_gating(tokens: Sequence[int], model_type: Optional[str]) -> int:
     """Return the start index of the last model-specific token pattern.
 
-    For Qwen3 (and any model_type without an explicit pattern), falls back to
-    the last token position.
+    For Qwen3/auto (and any model_type without an explicit pattern), falls back
+    to the last token position.
     """
     if model_type == "qwen3":
         return max(len(tokens) - 1, 0)

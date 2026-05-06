@@ -36,7 +36,7 @@ parser.add_argument("--multi_objective_dataset_name", type=str, default=None, he
 parser.add_argument("--dataset_split", type=str, default="train", help="Split tag used by stage-1_prepare for folder/filename suffix (e.g., train, all).")
 parser.add_argument("--embeddings_dir", type=str, default=None, help="Optional override for the embeddings root. Defaults to ./model/embeddings/.")
 parser.add_argument("--output_dir", type=str, default=None, help="Optional override for saving regression weights. Defaults to ./model/regression_weights/.")
-parser.add_argument("--model_family", type=str, default="llama3", help="Model family (llama3, gemma2, qwen3, auto).")
+parser.add_argument("--model_family", type=str, default="llama3", help="Model family (llama3, gemma2, qwen3, mistral, auto).")
 args = parser.parse_args()
 
 config = load_yaml_config(args.config_path)

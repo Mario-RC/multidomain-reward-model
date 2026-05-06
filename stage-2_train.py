@@ -252,7 +252,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=2048, help="Batch size")
     parser.add_argument("--debiasing_dims", type=int, nargs="+", default=[-1], help="Indices (0-based) of attribute dimensions to decorrelate from all others. Set to -1 to disable debiasing. Multiple values supported, e.g. --debiasing_dims 21 18.")
     parser.add_argument("--corr_threshold", type=float, default=0.04, help="Maximum allowed absolute Spearman correlation for debiasing")
-    parser.add_argument("--model_family", type=str, default="llama3", choices=["llama3", "gemma2", "qwen3", "auto"], help="Model family for token pattern matching during embedding extraction (if applicable, less relevant here)")
+    parser.add_argument("--model_family", type=str, default="llama3", choices=["llama3", "gemma2", "qwen3", "mistral", "auto"], help="Model family for token pattern matching during embedding extraction (if applicable, less relevant here)")
     parser.add_argument("--eval", type=str, default=None, help="Eval dataset name (e.g. reward-bench). Requires embeddings from stage-2_prepare.")
     parser.add_argument("--eval_split", type=str, default="filtered", help="Split suffix for the eval dataset (default: filtered).")
     parser.add_argument("--logit_scale", type=float, default=2.0, help="Scaling factor applied after softmax in the gating network")

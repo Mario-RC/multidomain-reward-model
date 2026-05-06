@@ -120,6 +120,8 @@ if args.model_family == "llama3":
     assert str(config.model_type).lower() in {"llama3", "llama"}, f"Expected llama/llama3 model_type, got {config.model_type}"
 elif args.model_family == "gemma2":
     assert str(config.model_type).lower() in {"gemma2", "gemma"}, f"Expected gemma/gemma2 model_type, got {config.model_type}"
+elif args.model_family == "mistral":
+    assert str(config.model_type).lower() == "mistral", f"Expected mistral model_type, got {config.model_type}"
 elif args.model_family in {"qwen3", "auto"}:
     pass
 else:

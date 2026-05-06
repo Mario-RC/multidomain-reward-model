@@ -111,7 +111,7 @@ def main() -> None:
     parser.add_argument("--reference_dataset_name", type=str, default=None, help="Reference dataset name (without split suffix, e.g., UltraFeedback-preference-standard).")
     parser.add_argument("--output_model_name", type=str, default=None, help="Optional packaged model directory name.")
     parser.add_argument("--output_dir", type=str, default=None, help="Optional override for final packaged model output directory.")
-    parser.add_argument("--model_family", type=str, default=None, help="Model family (llama3, gemma2, qwen3, auto).")
+    parser.add_argument("--model_family", type=str, default=None, help="Model family (llama3, gemma2, qwen3, mistral, auto).")
     parser.add_argument("--temperature", type=float, default=2.0, help="Temperature used in stage-2 training (for locating checkpoint).")
     parser.add_argument("--n_steps", type=int, default=30000, help="Number of steps used in stage-2 training (for locating checkpoint).")
     parser.add_argument("--seed", type=int, default=0, help="Seed used in stage-2 training (for locating checkpoint).")

@@ -34,6 +34,7 @@ The following base reward models have been used in this project:
 - **Llama3:** [`sfairXC/FsfairX-LLaMA3-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1)
 - **Gemma2:** [`sfairXC/FsfairX-Gemma2-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-Gemma2-RM-v0.1)
 - **Qwen3:** [`nvidia/Qwen3-Nemotron-8B-BRRM`](https://huggingface.co/nvidia/Qwen3-Nemotron-8B-BRRM)
+- **Mistral:** [`weqweasdas/RM-Mistral-7B`](https://huggingface.co/weqweasdas/RM-Mistral-7B)
 
 ---
 
@@ -269,7 +270,7 @@ Output sections:
 Evaluate a base reward model (as-is from HuggingFace) using its native reward score. Use `--model_name` to save results as `eval_baseline.json` inside the corresponding packaged model's results directory.
 
 ```bash
-# Scalar RM — scoring + preference + cultural (LLaMA3, Gemma2)
+# Scalar RM — scoring + preference + cultural (LLaMA3, Gemma2, Mistral)
 python3 evaluate_baseline.py \
   --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \  # Base reward model path
   --eval data/test \                              # Optional: cultural test data directory
@@ -292,7 +293,7 @@ Load pre-computed results from all models and produce side-by-side comparison ta
 python3 compare_models.py \
   --model_parent_dir model \                                                                         # Parent directory containing model subdirectories
   --no_baselines \                                                                                   # Skip loading eval_baseline.json (optional)
-  --models multi-domain-rm-llama-3-8b-it multi-domain-rm-gemma-2-9b-it multi-domain-rm-qwen-3-8b-it  # Models to compare
+  --models multi-domain-rm-llama-3-8b-it multi-domain-rm-gemma-2-9b-it multi-domain-rm-qwen-3-8b-it multi-domain-rm-mistral-7b-it  # Models to compare
 ```
 
 Discovers all models in `model/` that have `results/eval.json` or `results/eval_baseline.json`. Output includes:
