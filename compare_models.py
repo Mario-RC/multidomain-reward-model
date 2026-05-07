@@ -27,6 +27,7 @@ Usage:
 import csv
 import json
 import os
+import re
 import sys
 from argparse import ArgumentParser
 
@@ -93,9 +94,21 @@ def load_results(path):
     return data
 
 
+def canonical_model_name(model_name):
+    """Strip run-specific suffixes appended after the canonical model name."""
+    match = re.search(r"\s+\([^)]*\)$", model_name)
+    display_suffix = match.group(0) if match else ""
+    base_name = model_name[:match.start()] if match else model_name
+
+    match = re.match(r"^(multi-domain-rm-.+?-it)(?:[-_ ].*)?$", base_name)
+    if match:
+        return f"{match.group(1)}{display_suffix}"
+    return model_name
+
+
 def short_name(model_name):
-    """e.g. 'multi-domain-rm-llama-3-8b-it' -> 'llama-3-8b'"""
-    return model_name.replace("multi-domain-rm-", "").replace("-test-203", "")
+    """Display name for plots/tables."""
+    return canonical_model_name(model_name)
 
 
 # ---------------------------------------------------------------------------
