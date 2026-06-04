@@ -341,6 +341,21 @@ python3 stage-1_prepare.py --config_path config.yaml
 
 ---
 
+## Hugging Face Models
+
+The packaged multi-domain reward models are available on Hugging Face under the `mario-rc` namespace:
+
+| Model | Base reward model | Preference accuracy (%) | Scoring Spearman |
+| --- | --- | :---: | :---: |
+| [`multi-domain-rm-fsfairx-gemma-2-9b-it`](https://huggingface.co/mario-rc/multi-domain-rm-fsfairx-gemma-2-9b-it) | [`sfairXC/FsfairX-Gemma2-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-Gemma2-RM-v0.1) | 92.56 | 0.7346 |
+| [`multi-domain-rm-fsfairx-llama-3-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-fsfairx-llama-3-8b-it) | [`sfairXC/FsfairX-LLaMA3-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1) | 89.87 | 0.7108 |
+| [`multi-domain-rm-mistral-7b-it`](https://huggingface.co/mario-rc/multi-domain-rm-mistral-7b-it) | [`weqweasdas/RM-Mistral-7B`](https://huggingface.co/weqweasdas/RM-Mistral-7B) | 91.69 | 0.6710 |
+| [`multi-domain-rm-qwen-3-nemotron-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-qwen-3-nemotron-8b-it) | [`nvidia/Qwen3-Nemotron-8B-BRRM`](https://huggingface.co/nvidia/Qwen3-Nemotron-8B-BRRM) | 93.36 | 0.6704 |
+| [`multi-domain-rm-skywork-llama-3.1-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-skywork-llama-3.1-8b-it) | [`Skywork/Skywork-Reward-V2-Llama-3.1-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Llama-3.1-8B) | 92.69 | 0.7264 |
+| [`multi-domain-rm-skywork-qwen-3-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-skywork-qwen-3-8b-it) | [`Skywork/Skywork-Reward-V2-Qwen3-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-8B) | 95.72 | 0.7156 |
+
+---
+
 ## Model Directory Tree
 
 ```text
