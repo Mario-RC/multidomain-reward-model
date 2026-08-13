@@ -2,6 +2,7 @@
 
 import json
 import os
+import importlib.util
 from typing import Optional, Sequence
 
 import torch
@@ -16,6 +17,89 @@ def _requires_remote_code(model_path: str) -> bool:
     """Return True when the model needs trust_remote_code=True."""
     model_path_l = str(model_path).lower()
     return "qwen3" in model_path_l
+
+
+def _attention_implementation(device: str) -> str | None:
+    """Use FlashAttention on CUDA when installed; otherwise use Transformers defaults."""
+    if str(device).startswith("cuda") and importlib.util.find_spec("flash_attn") is not None:
+        return "flash_attention_2"
+    return None
+
+
+def _stable_int64_id(value) -> int:
+    """Return a deterministic non-negative signed-int64 identifier."""
+    import hashlib
+
+    if not isinstance(value, str):
+        value = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.blake2b(value.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big", signed=False) & ((1 << 63) - 1)
+
+
+def debiasing_checkpoint_suffix(debiasing_dims, corr_threshold: float) -> str:
+    """Encode reward-transform settings in a stable checkpoint suffix."""
+    dims = sorted({int(dimension) for dimension in (debiasing_dims or ()) if int(dimension) >= 0})
+    if not dims:
+        return "_dbnone"
+    threshold = format(float(corr_threshold), ".12g").replace("-", "m").replace(".", "p")
+    dimension_text = "-".join(map(str, dims))
+    return f"_db{dimension_text}_ct{threshold}"
+
+
+def validate_shared_routing_config(routing_config) -> dict:
+    """Validate the metadata contract required by packaged shared-gate checkpoints."""
+    if not isinstance(routing_config, dict):
+        raise ValueError("Stage 2 checkpoint is missing its training_config mapping.")
+    if routing_config.get("format_version") != 2 or not routing_config.get("shared_prompt_gating", False):
+        raise ValueError(
+            "Stage 2 checkpoint must declare format_version=2 and "
+            "shared_prompt_gating=true; legacy checkpoints are not packageable."
+        )
+    return routing_config
+
+
+def shared_gate_checkpoint_filename(args, model_name: str, preference_name: str, reference_name: str) -> str:
+    """Build the canonical Shared-Gate V2 checkpoint filename."""
+    from attributes import attribute_selection_suffix
+
+    defaults = {
+        "learning_rate": 0.0005, "weight_decay": 0.0, "n_hidden": 1,
+        "hidden_size": 64, "dropout": 0.1, "batch_size": 2048,
+        "logit_scale": 2.0, "domain_loss_weight": 0.25,
+        "entropy_weight": 0.02, "load_balance_weight": 0.05,
+    }
+    hyperparameters = "".join(
+        f"_{key[:2]}{getattr(args, key, default)}"
+        for key, default in defaults.items()
+    )
+    debiasing_dims = (
+        [-1] if str(reference_name).lower() == "null"
+        else getattr(args, "debiasing_dims", [-1])
+    )
+    suffix = debiasing_checkpoint_suffix(
+        debiasing_dims, getattr(args, "corr_threshold", 0.04)
+    )
+    suffix += "_cv" if getattr(args, "curriculum", False) else ""
+    suffix += "_bd" if getattr(args, "balance_difficulties", False) else ""
+    suffix += "" if getattr(args, "balance_domains", True) else "_ubd"
+    suffix += "_lgs" if getattr(args, "learnable_logit_scale", False) else ""
+    entropy_floor = getattr(args, "entropy_floor_fraction", 0.35)
+    suffix += "" if entropy_floor == 0.35 else f"_ef{entropy_floor}"
+    suffix += attribute_selection_suffix(
+        getattr(args, "attribute_subset", "full"),
+        getattr(args, "exclude_attributes", []),
+    )
+    checkpoint_tag = getattr(args, "checkpoint_tag", None)
+    suffix += f"_tag-{checkpoint_tag}" if checkpoint_tag else ""
+    suffix += "_refit" if getattr(args, "train_on_all", False) else ""
+    return (
+        f"gating_network_sgv2_{model_name}_mo_{args.multi_objective_dataset_name}_"
+        f"pref_{preference_name}_ref_{reference_name}"
+        f"_t{getattr(args, 'temperature', 2.0):.1f}"
+        f"_n{getattr(args, 'n_steps', 30000)}"
+        f"_seed{getattr(args, 'seed', 0)}{hyperparameters}{suffix}.pt"
+    )
+
 
 
 # ---------------------------------------------------------------------------
@@ -159,16 +243,16 @@ def _resolve_inference_model_path(
     if not isinstance(inference_cfg, dict):
         inference_cfg = {}
 
-    explicit_model_path = inference_cfg.get("model_path")
-    if explicit_model_path:
-        return str(explicit_model_path)
-
     if cli_model_parent_dir or cli_model_name:
         model_parent_dir = str(cli_model_parent_dir or inference_cfg.get("model_parent_dir", "model"))
         model_name = cli_model_name or inference_cfg.get("model_name")
         if not model_name:
             raise ValueError("model_name must be provided via --model_name or config.yaml inference.model_name")
         return os.path.join(model_parent_dir, str(model_name))
+
+    explicit_model_path = inference_cfg.get("model_path")
+    if explicit_model_path:
+        return str(explicit_model_path)
 
     model_name = inference_cfg.get("model_name")
     if not model_name:
@@ -220,18 +304,67 @@ def find_token_for_gating(tokens: Sequence[int], model_type: Optional[str]) -> i
 # Inference scoring helper
 # ---------------------------------------------------------------------------
 
-@torch.no_grad()
-def _score_messages(model, tokenizer, messages, device, max_length):
-    """Tokenize chat messages and run model forward pass."""
-    encoding = tokenizer.apply_chat_template(
-        messages, return_tensors="pt", padding=True, truncation=True, max_length=max_length,
+def _tokenize_chat(tokenizer, messages, device, max_length, *, add_generation_prompt=False):
+    """Render then tokenize a chat consistently across preparation and inference."""
+    text = tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=add_generation_prompt,
     )
-    if isinstance(encoding, torch.Tensor):
-        input_ids = encoding.to(device)
-        attention_mask = None
-    else:
-        # BatchEncoding or dict-like
-        input_ids = encoding["input_ids"].to(device)
-        attention_mask = encoding.get("attention_mask")
-        attention_mask = attention_mask.to(device) if attention_mask is not None else None
-    return model(input_ids=input_ids, attention_mask=attention_mask)
+    encoding = tokenizer(
+        text, return_tensors="pt", padding=True, truncation=True, max_length=max_length,
+    )
+    return {
+        key: value.to(device) if isinstance(value, torch.Tensor) else value
+        for key, value in encoding.items()
+    }
+
+
+@torch.no_grad()
+def _score_messages(model, tokenizer, messages, device, max_length, gating_output_override=None):
+    """Tokenize chat messages and run one model forward pass."""
+    if (
+        gating_output_override is None
+        and getattr(model.config, "shared_prompt_gating", False)
+        and messages
+        and messages[-1].get("role") == "assistant"
+        and len(messages) > 1
+    ):
+        prompt_encoding = _tokenize_chat(
+            tokenizer, messages[:-1], device, max_length,
+            add_generation_prompt=True,
+        )
+        gating_output_override = model.compute_gating(
+            input_ids=prompt_encoding["input_ids"],
+            attention_mask=prompt_encoding.get("attention_mask"),
+        )
+    encoding = _tokenize_chat(tokenizer, messages, device, max_length)
+    return model(
+        input_ids=encoding["input_ids"],
+        attention_mask=encoding.get("attention_mask"),
+        gating_output_override=gating_output_override,
+    )
+
+
+@torch.no_grad()
+def _score_pair_shared_gate(
+        model, tokenizer, prompt_messages, chosen_messages, rejected_messages,
+        device, max_length,
+):
+    """Score a preference pair with one prompt-only gate shared by both candidates."""
+    prompt_encoding = _tokenize_chat(
+        tokenizer,
+        prompt_messages,
+        device,
+        max_length,
+        add_generation_prompt=True,
+    )
+    gating_output = model.compute_gating(
+        input_ids=prompt_encoding["input_ids"],
+        attention_mask=prompt_encoding.get("attention_mask"),
+    )
+    chosen = _score_messages(
+        model, tokenizer, chosen_messages, device, max_length, gating_output,
+    )
+    rejected = _score_messages(
+        model, tokenizer, rejected_messages, device, max_length, gating_output,
+    )
+    return chosen, rejected, gating_output
