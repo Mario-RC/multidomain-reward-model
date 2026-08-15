@@ -2,15 +2,18 @@
 
 import json
 import os
+import shutil
 import sys
 import torch
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime
 from transformers import AutoConfig, AutoTokenizer
 from modeling_custom import RewardModelWithGating
-from config_utils import load_yaml_config, apply_section_overrides
-from attributes import ATTRIBUTES
-from utils import _requires_remote_code
+from config_utils import load_yaml_config, apply_model_registry, apply_section_overrides
+from attributes import ATTRIBUTES, ATTRIBUTE_SUBSETS
+from utils import (
+    _requires_remote_code, shared_gate_checkpoint_filename, validate_shared_routing_config,
+)
 
 def _safe_torch_load(path: str):
     # Prefer safe weights-only loading when the installed PyTorch supports it.
@@ -74,19 +77,8 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
         "model", "regression_weights", f"{model_name}_{multi_objective_dataset_name}_100pct.pt"
     )
     stage2_weights_path = os.path.join(
-        "model",
-        "gating_network",
-        (
-            f"gating_network_{model_name}_mo_{multi_objective_dataset_name}_"
-            f"pref_{preference_base}_ref_{reference_base}"
-            f"_t{getattr(args, 'temperature', 2.0):.1f}_n{getattr(args, 'n_steps', 30000)}_seed{getattr(args, 'seed', 0)}"
-            + "".join(
-                f"_{k[:2]}{getattr(args, k, v)}" for k, v in
-                {"learning_rate": 0.0005, "weight_decay": 0.0, "n_hidden": 1, "hidden_size": 64, "dropout": 0.1, "batch_size": 2048, "corr_threshold": 0.04, "logit_scale": 2.0}.items()
-            )
-            + ("_cv" if getattr(args, "curriculum", False) else "")
-            + ".pt"
-        ),
+        "model", "gating_network",
+        shared_gate_checkpoint_filename(args, model_name, preference_base, reference_base),
     )
     model_parent_dir = str(stage3_cfg.get("model_parent_dir", stage3_cfg.get("output_parent_dir", "model")))
     final_model_name = (
@@ -101,7 +93,7 @@ def _build_defaults_from_config(config: dict, model_path: str, args=None):
 def main() -> None:
     parser = ArgumentParser(description="Stage 3: package final reward model.")
     parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
-    parser.add_argument("--model_key", type=str, default=None, help="Model key defined in config.yaml:model:registry.")
+    parser.add_argument("--model_key", type=str, default=None, help="Model key defined in config.yaml:model_registry.")
     parser.add_argument("--model_path", type=str, default=None, help="Base model HF ID/path.")
     parser.add_argument("--stage_1_weights_path", type=str, default=None, help="Optional override for Stage 1 regression weights path.")
     parser.add_argument("--stage_2_weights_path", type=str, default=None, help="Optional override for Stage 2 gating network weights path.")
@@ -121,16 +113,36 @@ def main() -> None:
     parser.add_argument("--hidden_size", type=int, default=64, help="Hidden size used in stage-2 (for locating checkpoint).")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout used in stage-2 (for locating checkpoint).")
     parser.add_argument("--batch_size", type=int, default=2048, help="Batch size used in stage-2 (for locating checkpoint).")
-    parser.add_argument("--corr_threshold", type=float, default=0.04, help="Corr threshold used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--corr_threshold", type=float, default=0.04, help="Correlation threshold used in Stage 2 checkpoint naming.")
+    parser.add_argument("--debiasing_dims", type=int, nargs="+", default=[-1], help="Debiasing dimensions used in Stage 2 checkpoint naming.")
     parser.add_argument("--logit_scale", type=float, default=2.0, help="Logit scale used in stage-2 (for locating checkpoint).")
+    parser.add_argument("--domain_loss_weight", type=float, default=0.25, help="Domain loss weight used in stage-2.")
+    parser.add_argument("--entropy_weight", type=float, default=0.02, help="Entropy loss weight used in stage-2.")
+    parser.add_argument("--entropy_floor_fraction", type=float, default=0.35, help="Entropy floor fraction used in stage-2.")
+    parser.add_argument("--load_balance_weight", type=float, default=0.05, help="Load-balance loss weight used in stage-2.")
+    parser.add_argument("--balance_domains", action=BooleanOptionalAction, default=True, help="Stage 2 domain-balanced sampling.")
+    parser.add_argument("--balance_difficulties", action=BooleanOptionalAction, default=False, help="Stage 2 balanced domain-by-difficulty cells.")
+    parser.add_argument("--learnable_logit_scale", action=BooleanOptionalAction, default=False, help="Stage 2 learnable global gate scale.")
+    parser.add_argument("--attribute_subset", choices=sorted(ATTRIBUTE_SUBSETS), default="full", help="Attribute subset used in Stage 2.")
+    parser.add_argument("--exclude_attributes", nargs="*", default=[], help="Additional attributes excluded in Stage 2.")
     parser.add_argument("--curriculum", action="store_true", default=False, help="Include _curriculum suffix when locating stage-2 checkpoint.")
+    parser.add_argument("--checkpoint_tag", type=str, default=None, help="Optional checkpoint tag used in Stage 2.")
+    parser.add_argument("--train_on_all", action=BooleanOptionalAction, default=False, help="Locate a Stage 2 all-training-data refit checkpoint.")
     args = parser.parse_args()
 
     config = load_yaml_config(args.config_path)
     stage3_cfg = config.get("stage_3_package", {}) or {}
     args = apply_section_overrides(args, stage3_cfg)
+    try:
+        args = apply_model_registry(args, config)
+    except ValueError as error:
+        parser.error(str(error))
     if not args.model_path:
-        args.model_path = stage3_cfg.get("model_path")
+        parser.error("--model_path is required via CLI, stage_3_package, or --model_key.")
+    if not args.multi_objective_dataset_name:
+        parser.error("--multi_objective_dataset_name is required.")
+    if not args.preference_dataset_name:
+        parser.error("--preference_dataset_name is required.")
 
     inferred_stage1, inferred_stage2, inferred_output = _build_defaults_from_config(config, args.model_path, args)
     if args.stage_1_weights_path:
@@ -165,11 +177,24 @@ def main() -> None:
     if trust_remote_code:
         print("Using trust_remote_code=True for Qwen3 model loading compatibility.")
 
+    print(f"Loading Stage 2 gating network weights from: {stage_2_weights_path}")
+    stage2_payload = _safe_torch_load(stage_2_weights_path)
+    routing_config = stage2_payload.get("training_config", {}) if isinstance(stage2_payload, dict) else {}
+    validate_shared_routing_config(routing_config)
+
     model_config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=trust_remote_code)
     model_config.num_objectives = len(ATTRIBUTES)
-    model_config.gating_hidden_dim = args.hidden_size
-    model_config.gating_n_hidden = args.n_hidden
-    model_config.gating_temperature = args.temperature
+    model_config.gating_hidden_dim = routing_config.get("hidden_size", args.hidden_size)
+    model_config.gating_n_hidden = routing_config.get("n_hidden", args.n_hidden)
+    model_config.gating_temperature = routing_config.get("temperature", args.temperature)
+    model_config.gating_dropout = routing_config.get("dropout", args.dropout)
+    model_config.gating_logit_scale = routing_config.get("logit_scale", args.logit_scale)
+    model_config.gating_learnable_logit_scale = routing_config.get("learnable_logit_scale", False)
+    model_config.gating_active_attribute_indices = routing_config.get("active_attribute_indices")
+    model_config.shared_prompt_gating = routing_config.get("shared_prompt_gating", False)
+    auto_map = dict(getattr(model_config, "auto_map", {}) or {})
+    auto_map["AutoModel"] = "modeling_custom.RewardModelWithGating"
+    model_config.auto_map = auto_map
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=trust_remote_code)
 
     print("Instantiating custom architecture with base model weights...")
@@ -178,6 +203,8 @@ def main() -> None:
         config=model_config,
         ignore_mismatched_sizes=True,
         trust_remote_code=trust_remote_code,
+        dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
     )
 
     print(f"Loading Stage 1 regression weights from: {stage_1_weights_path}")
@@ -191,8 +218,6 @@ def main() -> None:
     stage1_weights = stage1_weights.to(model.regression_layer.weight.dtype)
     model.regression_layer.weight.data.copy_(stage1_weights)
 
-    print(f"Loading Stage 2 gating network weights from: {stage_2_weights_path}")
-    stage2_payload = _safe_torch_load(stage_2_weights_path)
     stage2_state_dict = _resolve_state_dict(stage2_payload)
     if not isinstance(stage2_state_dict, dict):
         raise TypeError("Stage 2 checkpoint must resolve to a state_dict dictionary.")
@@ -210,23 +235,44 @@ def main() -> None:
             diag = torch.arange(model.num_objectives, device=eye.device)
             eye[diag, diag] = 1.0
             model.reward_transform_matrix.data.copy_(eye)
-        print("No reward_transform_matrix in checkpoint; using identity (legacy checkpoint).")
+        print("No reward_transform_matrix in checkpoint; using identity.")
 
     print(f"Saving finalized model to: {output_dir}")
-    os.makedirs(output_dir, exist_ok=True)
-    model.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)
+    temporary_output_dir = f"{output_dir}.incomplete"
+    if os.path.exists(temporary_output_dir):
+        raise FileExistsError(
+            f"Refusing to overwrite stale temporary directory: {temporary_output_dir}. "
+            "Inspect and remove it explicitly before retrying."
+        )
+    if os.path.exists(output_dir):
+        raise FileExistsError(
+            f"Refusing to overwrite existing output directory: {output_dir}. "
+            "Remove it explicitly after confirming that it is incomplete."
+        )
+    os.makedirs(temporary_output_dir, exist_ok=False)
+    model.save_pretrained(
+        temporary_output_dir,
+        safe_serialization=True,
+        max_shard_size="4GB",
+    )
+    tokenizer.save_pretrained(temporary_output_dir)
+    for remote_code_file in ("modeling_custom.py", "utils.py"):
+        shutil.copy2(os.path.join(os.path.dirname(os.path.abspath(__file__)), remote_code_file), temporary_output_dir)
 
     # Save training metadata so evaluate.py can discover stage-1/stage-2 paths.
     metadata = {
         "base_model_path": args.model_path,
         "stage_1_weights_path": stage_1_weights_path,
         "stage_2_weights_path": stage_2_weights_path,
+        "training_config": routing_config,
+        "validation_metrics": stage2_payload.get("validation_metrics", {}) if isinstance(stage2_payload, dict) else {},
     }
-    metadata_path = os.path.join(output_dir, "training_metadata.json")
+    metadata_path = os.path.join(temporary_output_dir, "training_metadata.json")
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
     print(f"Training metadata saved to: {metadata_path}")
+
+    os.replace(temporary_output_dir, output_dir)
 
     print(f"Multidomain reward model packaged at: {output_dir}")
 
