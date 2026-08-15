@@ -22,8 +22,14 @@ from transformers import AutoTokenizer
 from datetime import datetime
 from modeling_custom import RewardModelWithGating
 from config_utils import load_yaml_config, apply_section_overrides
-from attributes import ATTRIBUTES, DOMAIN_PREFIXES
-from utils import _resolve_inference_model_path, load_jsonl_test, _score_messages, load_cultural_test, parse_cultural_conversation
+from attributes import (
+    ATTRIBUTES, DOMAIN_PREFIXES, DOMAIN_NAMES, DOMAIN_TO_INDEX,
+    DOMAIN_ATTRIBUTE_INDICES,
+)
+from utils import (
+    _resolve_inference_model_path, load_jsonl_test, _score_messages,
+    _score_pair_shared_gate, _stable_int64_id, load_cultural_test, parse_cultural_conversation,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +164,7 @@ def evaluate_scoring(model, tokenizer, data_path, device, max_length, max_sample
 # Preference evaluation  (Multi-Domain-Data-Preference-Pairs)
 # ---------------------------------------------------------------------------
 
-def evaluate_preference(model, tokenizer, data_path, device, max_length, max_samples):
+def evaluate_preference(model, tokenizer, data_path, device, max_length, max_samples, prediction_output_path=None):
     records = load_jsonl_test(data_path)
     if not records:
         print(f"No test records found in {data_path}")
@@ -169,96 +175,227 @@ def evaluate_preference(model, tokenizer, data_path, device, max_length, max_sam
         records = records[:max_samples]
 
     print(f"\n{'=' * 70}")
-    print(f"  PREFERENCE EVALUATION — {len(records)} test pairs")
+    print(f"  SHARED-PROMPT PREFERENCE EVALUATION - {len(records)} test pairs")
     print(f"{'=' * 70}")
 
-    correct = 0
-    ties = 0
-    total = 0
-    domain_stats: dict[str, list[int, int, int]] = {}
-    difficulty_stats: dict[str, list[int, int, int]] = {}
-    skipped = 0
-    margins: list[float] = []
+    methods = {
+        name: {"correct": 0, "ties": 0, "margins": []}
+        for name in ("learned_shared", "uniform", "oracle_domain", "learned_no_debias")
+    }
+    active_mask = getattr(
+        model.gating, "active_attribute_mask",
+        torch.ones(len(ATTRIBUTES), dtype=torch.bool, device=device),
+    ).bool()
+    active_indices = torch.where(active_mask)[0].tolist()
+    active_set = set(active_indices)
+    active_domain_indices = {
+        name: [i for i in DOMAIN_ATTRIBUTE_INDICES[name] if i in active_set]
+        for name in DOMAIN_NAMES
+    }
+    domain_stats, difficulty_stats, matrix_stats = {}, {}, {}
+    attr_mass = torch.zeros(len(ATTRIBUTES), dtype=torch.float64)
+    entropy_sum = max_sum = 0.0
+    routing_correct = routing_total = total = skipped = 0
+    domain_mass_sum = torch.zeros(len(DOMAIN_NAMES), dtype=torch.float64)
+    prediction_stream = None
+    if prediction_output_path:
+        os.makedirs(os.path.dirname(prediction_output_path) or ".", exist_ok=True)
+        prediction_stream = open(prediction_output_path, "w", encoding="utf-8")
 
-    for record in tqdm(records, desc="Preference"):
-        messages = record.get("messages", [])
+    def _update(bucket, key, correct, tie):
+        stats = bucket.setdefault(key, [0, 0, 0])
+        stats[0] += int(correct)
+        stats[1] += 1
+        stats[2] += int(tie)
+
+    for record_index, record in enumerate(tqdm(records, desc="Preference/shared gate")):
+        prompt = record.get("messages", [])
         chosen = record.get("chosen")
         rejected = record.get("rejected")
-        if not messages or not chosen or not rejected:
+        if not prompt or not chosen or not rejected:
             skipped += 1
             continue
-
-        # chosen / rejected are lists of message dicts
-        chosen_msgs = messages + (chosen if isinstance(chosen, list) else [{"role": "assistant", "content": chosen}])
-        rejected_msgs = messages + (rejected if isinstance(rejected, list) else [{"role": "assistant", "content": rejected}])
+        chosen_msgs = prompt + (chosen if isinstance(chosen, list) else [{"role": "assistant", "content": chosen}])
+        rejected_msgs = prompt + (rejected if isinstance(rejected, list) else [{"role": "assistant", "content": rejected}])
+        metadata = record.get("metadata", {})
+        domain = str(metadata.get("domain", record.get("domain", "unknown"))).lower()
+        difficulty = str(metadata.get("difficulty", record.get("difficulty", "unknown"))).lower()
+        domain_index = DOMAIN_TO_INDEX.get(domain)
+        pair_identifier = record.get("pair_id")
+        if pair_identifier is None:
+            pair_identifier = str(_stable_int64_id({
+                "record_index": record_index, "prompt": prompt,
+                "chosen": chosen, "rejected": rejected,
+            }))
 
         try:
-            c_score = _score_messages(model, tokenizer, chosen_msgs, device, max_length).score.cpu().float().item()
-            r_score = _score_messages(model, tokenizer, rejected_msgs, device, max_length).score.cpu().float().item()
+            chosen_out, rejected_out, gate = _score_pair_shared_gate(
+                model, tokenizer, prompt, chosen_msgs, rejected_msgs,
+                device, max_length,
+            )
+            gate = gate.float()
+            scale = gate.sum(-1, keepdim=True).clamp_min(1e-8)
+            probs = gate / scale
+            raw_pair = torch.stack(
+                [chosen_out.rewards.float().squeeze(0), rejected_out.rewards.float().squeeze(0)]
+            )
+            adjusted_pair = raw_pair @ model.reward_transform_matrix.float()
+            learned_scores = torch.tensor([
+                chosen_out.score.float().item(), rejected_out.score.float().item()
+            ])
+            uniform_scores = adjusted_pair[:, active_indices].mean(-1) * scale.item()
+            if domain_index is None:
+                oracle_scores = uniform_scores
+            else:
+                indices = active_domain_indices[DOMAIN_NAMES[domain_index]]
+                oracle_scores = adjusted_pair[:, indices].mean(-1) * scale.item()
+            identity_scores = torch.sum(raw_pair * gate.squeeze(0), -1)
+            score_pairs = {
+                "learned_shared": learned_scores,
+                "uniform": uniform_scores,
+                "oracle_domain": oracle_scores,
+                "learned_no_debias": identity_scores,
+            }
         except Exception:
             skipped += 1
             continue
 
-        is_correct = c_score > r_score
-        is_tie = c_score == r_score
-        correct += int(is_correct)
-        ties += int(is_tie)
+        learned_correct = False
+        learned_tie = False
+        example_methods = {}
+        for name, scores in score_pairs.items():
+            margin = float((scores[0] - scores[1]).item())
+            correct, tie = margin > 0, margin == 0
+            example_methods[name] = {
+                "margin": round(margin, 8),
+                "correct": bool(correct),
+                "tie": bool(tie),
+            }
+            methods[name]["correct"] += int(correct)
+            methods[name]["ties"] += int(tie)
+            methods[name]["margins"].append(margin)
+            if name == "learned_shared":
+                learned_correct, learned_tie = correct, tie
+
+        _update(domain_stats, domain, learned_correct, learned_tie)
+        _update(difficulty_stats, difficulty, learned_correct, learned_tie)
+        _update(matrix_stats, f"{domain}|{difficulty}", learned_correct, learned_tie)
+
+        entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(-1)
+        entropy_sum += entropy.item()
+        max_sum += probs.max(-1).values.item()
+        attr_mass += probs.squeeze(0).double().cpu()
+        masses = torch.tensor([
+            probs[:, active_domain_indices[name]].sum().item()
+            for name in DOMAIN_NAMES
+        ])
+        domain_mass_sum += masses.double()
+        if domain_index is not None:
+            routing_correct += int(masses.argmax().item() == domain_index)
+            routing_total += 1
+        if prediction_stream is not None:
+            prediction_stream.write(json.dumps({
+                "pair_id": str(pair_identifier),
+                "source_dialogue_id": record.get("source_dialogue_id"),
+                "domain": domain,
+                "difficulty": difficulty,
+                "methods": example_methods,
+                "gating": {
+                    "entropy": round(float(entropy.item()), 8),
+                    "top1_mass": round(float(probs.max().item()), 8),
+                    "domain_mass": {
+                        name: round(float(masses[i].item()), 8)
+                        for i, name in enumerate(DOMAIN_NAMES)
+                    },
+                },
+            }, ensure_ascii=False) + "\n")
         total += 1
-        margins.append(c_score - r_score)
 
-        metadata = record.get("metadata", {})
-        domain = metadata.get("domain", "unknown")
-        difficulty = metadata.get("difficulty", "unknown")
-
-        for bucket, key in [(domain_stats, domain), (difficulty_stats, difficulty)]:
-            if key not in bucket:
-                bucket[key] = [0, 0, 0]
-            bucket[key][0] += int(is_correct)
-            bucket[key][1] += 1
-            bucket[key][2] += int(is_tie)
-
+    if prediction_stream is not None:
+        prediction_stream.close()
+        print(f"  Pair-level predictions saved to {prediction_output_path}")
     if skipped:
         print(f"  Skipped: {skipped}")
-
-    if total == 0:
-        print("  No valid pairs evaluated.")
+    if not total:
         return {}
 
-    margins_arr = np.array(margins)
-    print(f"\n  Overall accuracy: {correct}/{total}  ({100 * correct / total:.2f}%)")
-    print(f"  Ties (chosen == rejected): {ties}")
-    print(f"  Margin stats — mean: {margins_arr.mean():.4f}  std: {margins_arr.std():.4f}")
+    ablations = {}
+    print("\n  Gating ablations (same candidate rewards):")
+    for name, stats in methods.items():
+        margins = np.asarray(stats["margins"])
+        accuracy = 100.0 * stats["correct"] / total
+        ablations[name] = {
+            "accuracy": round(accuracy, 4),
+            "correct": stats["correct"],
+            "total": total,
+            "ties": stats["ties"],
+            "margin_mean": round(float(margins.mean()), 6),
+            "margin_std": round(float(margins.std()), 6),
+        }
+        print(f"    {name:<20} {accuracy:6.2f}%")
 
-    # Per-domain
-    results_domain = {}
-    if domain_stats:
-        print(f"\n  {'Domain':<25} {'Accuracy':>10} {'Correct':>9} {'Total':>7} {'Ties':>6}")
-        print(f"  {'-' * 61}")
-        for d in sorted(domain_stats):
-            c, t, ti = domain_stats[d]
-            results_domain[d] = {"accuracy": round(100 * c / t, 4), "correct": c, "total": t, "ties": ti}
-            print(f"  {d:<25} {100 * c / t:>9.2f}% {c:>9} {t:>7} {ti:>6}")
+    def _summarize(bucket):
+        return {
+            key: {
+                "accuracy": round(100 * values[0] / values[1], 4),
+                "correct": values[0], "total": values[1], "ties": values[2],
+            }
+            for key, values in sorted(bucket.items())
+        }
 
-    # Per-difficulty
-    results_difficulty = {}
-    if difficulty_stats:
-        print(f"\n  {'Difficulty':<25} {'Accuracy':>10} {'Correct':>9} {'Total':>7} {'Ties':>6}")
-        print(f"  {'-' * 61}")
-        for d in sorted(difficulty_stats):
-            c, t, ti = difficulty_stats[d]
-            results_difficulty[d] = {"accuracy": round(100 * c / t, 4), "correct": c, "total": t, "ties": ti}
-            print(f"  {d:<25} {100 * c / t:>9.2f}% {c:>9} {t:>7} {ti:>6}")
+    results_domain = _summarize(domain_stats)
+    results_difficulty = _summarize(difficulty_stats)
+    results_matrix = {
+        domain: {
+            difficulty: _summarize({"x": matrix_stats[key]})["x"]
+            for key in sorted(matrix_stats)
+            if key.startswith(domain + "|")
+            for difficulty in [key.split("|", 1)[1]]
+        }
+        for domain in sorted(domain_stats)
+    }
+    log_k = np.log(len(active_indices))
+    mean_entropy = entropy_sum / total
+    gating_metrics = {
+        "mean_entropy": round(mean_entropy, 6),
+        "normalized_entropy": round(mean_entropy / log_k, 6),
+        "effective_attributes": round(float(np.exp(mean_entropy)), 6),
+        "mean_top1_mass": round(max_sum / total, 6),
+        "domain_routing_accuracy": (
+            round(100 * routing_correct / routing_total, 4) if routing_total else None
+        ),
+        "mean_attribute_mass": {
+            attr: round(float(attr_mass[i] / total), 8)
+            for i, attr in enumerate(ATTRIBUTES)
+        },
+        "mean_domain_mass": {
+            domain: round(float(domain_mass_sum[i] / total), 8)
+            for i, domain in enumerate(DOMAIN_NAMES)
+        },
+        "active_attributes": [ATTRIBUTES[i] for i in active_indices],
+        "excluded_attributes": [a for i, a in enumerate(ATTRIBUTES) if i not in active_set],
+    }
+    print(
+        f"  Gate entropy={gating_metrics['normalized_entropy']:.3f} normalized, "
+        f"effective attributes={gating_metrics['effective_attributes']:.2f}, "
+        f"top-1 mass={gating_metrics['mean_top1_mass']:.3f}, "
+        f"domain routing={gating_metrics['domain_routing_accuracy']}%"
+    )
 
+    learned = ablations["learned_shared"]
     return {
         "total": total,
-        "correct": correct,
-        "ties": ties,
+        "correct": learned["correct"],
+        "ties": learned["ties"],
         "skipped": skipped,
-        "accuracy": round(100 * correct / total, 4),
-        "margin_mean": round(float(margins_arr.mean()), 6),
-        "margin_std": round(float(margins_arr.std()), 6),
+        "accuracy": learned["accuracy"],
+        "margin_mean": learned["margin_mean"],
+        "margin_std": learned["margin_std"],
         "domains": results_domain,
         "difficulty": results_difficulty,
+        "domain_difficulty": results_matrix,
+        "ablations": ablations,
+        "gating": gating_metrics,
     }
 
 
@@ -286,6 +423,7 @@ def evaluate_cultural(model, tokenizer, data_dir, device, max_length):
     arousal_scores: dict[int, list[float]] = {}
     all_scores: list[float] = []
     all_arousal: list[int] = []
+    arousal_score_values: list[float] = []
     skipped = 0
 
     for record in tqdm(records, desc="Cultural"):
@@ -321,6 +459,7 @@ def evaluate_cultural(model, tokenizer, data_dir, device, max_length):
         if arousal is not None:
             arousal_scores.setdefault(arousal, []).append(score)
             all_arousal.append(arousal)
+            arousal_score_values.append(score)
 
     if skipped:
         print(f"  Skipped: {skipped}")
@@ -369,7 +508,7 @@ def evaluate_cultural(model, tokenizer, data_dir, device, max_length):
     corr_info = {}
     if len(all_arousal) >= 3:
         a_arr = np.array(all_arousal, dtype=float)
-        s_arr = np.array(all_scores[:len(all_arousal)])
+        s_arr = np.array(arousal_score_values, dtype=float)
         r_p = pearsonr(a_arr, s_arr).statistic
         r_s = spearmanr(a_arr, s_arr).statistic
         corr_info = {"pearson": round(float(r_p), 4), "spearman": round(float(r_s), 4)}
@@ -477,7 +616,7 @@ def main() -> None:
     # Model
     parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
     parser.add_argument("--model_path", type=str, default=None, help="Override for packaged model path.")
-    parser.add_argument("--model_parent_dir", type=str, default="model", help="Packaged model parent directory.")
+    parser.add_argument("--model_parent_dir", type=str, default=None, help="Packaged model parent directory (default: inference.model_parent_dir or model).")
     parser.add_argument("--model_name", type=str, default=None, help="Packaged model directory name.")
 
     # Data
@@ -491,6 +630,7 @@ def main() -> None:
     parser.add_argument("--skip_preference", action="store_true", help="Skip preference evaluation.")
     parser.add_argument("--eval", type=str, default=None, help="Path to test data directory or JSONL file (e.g. data/test). Evaluates with scoring metrics.")
     parser.add_argument("--output_json", type=str, default=None, help="Save evaluation results to a JSON file.")
+    parser.add_argument("--skip_pair_predictions", action="store_true", help="Do not save per-pair margins used by paired significance tests.")
 
     args = parser.parse_args()
     config = load_yaml_config(args.config_path)
@@ -587,7 +727,8 @@ def main() -> None:
     # ------------------------------------------------------------------
     if not args.skip_preference:
         results["preference"] = evaluate_preference(
-            model, tokenizer, args.preference_data_path, device, args.max_length, args.max_samples
+            model, tokenizer, args.preference_data_path, device, args.max_length, args.max_samples,
+            None if args.skip_pair_predictions else os.path.join(model_path, "results", "preference_predictions.jsonl"),
         )
 
     # ------------------------------------------------------------------
