@@ -10,12 +10,15 @@ venv/
 armorm/
 
 # generated artifacts
+analysis/
 armo-rm/data/
 armo-rm/logs/
 model/
 logs/
+experiments/
 *.safetensors
 *.pt
+*.orig
 
 # local model-specific scripts (only mdorm.sh is tracked)
 mdorm_*.sh
