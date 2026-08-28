@@ -482,6 +482,7 @@ def evaluate_cultural_baseline(model, tokenizer, data_dir, device, max_length, p
     arousal_scores: dict[int, list[float]] = {}
     all_scores: list[float] = []
     all_arousal: list[int] = []
+    arousal_score_values: list[float] = []
     skipped = 0
 
     for record in tqdm(records, desc="Cultural"):
@@ -510,6 +511,7 @@ def evaluate_cultural_baseline(model, tokenizer, data_dir, device, max_length, p
         if arousal is not None:
             arousal_scores.setdefault(arousal, []).append(score)
             all_arousal.append(arousal)
+            arousal_score_values.append(score)
 
     if skipped:
         print(f"  Skipped: {skipped}")
@@ -547,7 +549,7 @@ def evaluate_cultural_baseline(model, tokenizer, data_dir, device, max_length, p
     corr_info = {}
     if len(all_arousal) >= 3:
         a_arr = np.array(all_arousal, dtype=float)
-        s_arr = np.array(all_scores[:len(all_arousal)])
+        s_arr = np.array(arousal_score_values, dtype=float)
         r_p = pearsonr(a_arr, s_arr).statistic
         r_s = spearmanr(a_arr, s_arr).statistic
         corr_info = {"pearson": round(float(r_p), 4), "spearman": round(float(r_s), 4)}

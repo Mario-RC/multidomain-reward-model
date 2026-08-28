@@ -40,6 +40,7 @@ from matplotlib.patches import Rectangle
 
 from datetime import datetime
 from attributes import ATTRIBUTES, DOMAIN_PREFIXES
+from config_utils import load_yaml_config, apply_section_overrides
 
 print(f"\n### Compare Models started at {datetime.now().isoformat()} ###")
 
@@ -1285,6 +1286,7 @@ def _plot_single_model(result, plots_dir, suffix=""):
 
 def main():
     parser = ArgumentParser(description="Compare evaluation results across packaged models.")
+    parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
     parser.add_argument("--models", nargs="+", default=None,
                         help="Model names to compare. Default: auto-discover from model/.")
     parser.add_argument("--model_parent_dir", type=str, default=DEFAULT_MODEL_PARENT_DIR,
@@ -1294,6 +1296,8 @@ def main():
     parser.add_argument("--no_baselines", action="store_true",
                         help="Skip loading eval_baseline.json for each model.")
     args = parser.parse_args()
+    config = load_yaml_config(args.config_path)
+    args = apply_section_overrides(args, config.get("compare_models", {}))
 
     # Discover models
     model_names = args.models or discover_models(args.model_parent_dir)

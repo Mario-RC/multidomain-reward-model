@@ -35,13 +35,14 @@ import numpy as np
 from scipy.stats import spearmanr
 
 from attributes import ATTRIBUTES, DOMAIN_PREFIXES
+from config_utils import load_yaml_config, apply_section_overrides
 
 
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
 
-def load_scoring_data(path):
+def load_scoring_data(path, target_split="train"):
     """
     Load the scoring JSONL file and extract parallel arrays of attribute
     scores, response lengths, and domain labels.
@@ -62,7 +63,10 @@ def load_scoring_data(path):
     rows = []
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
-            rows.append(json.loads(line))
+            record = json.loads(line)
+            split = str(record.get("split", "unknown")).lower()
+            if target_split == "all" or split == target_split:
+                rows.append(record)
 
     # Initialize collectors: one list per attribute, same length as rows.
     scores_by_attr = {attr: [] for attr in ATTRIBUTES}
@@ -277,16 +281,21 @@ def compute_attribute_stats(scores_by_attr):
 def main():
     print(f"\n### Analyze correlations started at {datetime.now().isoformat()} ###")
     parser = ArgumentParser(description="Analyze attribute correlations and length bias in scoring data.")
+    parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
     parser.add_argument("--dataset_path", type=str, default="data/dataset/Multi-Domain-Data-Scoring.jsonl",
                         help="Path to the Multi-Domain-Data-Scoring JSONL file.")
+    parser.add_argument("--split", choices=["train", "val", "test", "all"], default="train",
+                        help="Split used for dimension-selection statistics; train by default to avoid test leakage.")
     parser.add_argument("--threshold", type=float, default=0.3,
                         help="Flag attribute pairs with |corr| above this value.")
     args = parser.parse_args()
+    config = load_yaml_config(args.config_path)
+    args = apply_section_overrides(args, config.get("analyze_correlations", {}))
 
     # ── Load data ──
     print(f"Loading {args.dataset_path}...")
-    scores_by_attr, lengths, domains, n_total = load_scoring_data(args.dataset_path)
-    print(f"  Total dialogues: {n_total}")
+    scores_by_attr, lengths, domains, n_total = load_scoring_data(args.dataset_path, args.split)
+    print(f"  Total dialogues: {n_total} (split={args.split})")
 
     # ── Section 1: Attribute statistics ──
     attr_stats = compute_attribute_stats(scores_by_attr)
