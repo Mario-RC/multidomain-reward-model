@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 from transformers import AutoTokenizer
 from modeling_custom import RewardModelWithGating
 from config_utils import load_yaml_config
-from utils import _resolve_inference_model_path
+from utils import _resolve_inference_model_path, _score_messages, _score_pair_shared_gate
 
 class MultiDomainRMPipeline:
     def __init__(self, model_id, device_map="auto", torch_dtype=None, truncation=True, max_length=4096):
@@ -32,24 +32,33 @@ class MultiDomainRMPipeline:
         self.model.eval()
 
     def __call__(self, messages: List[Dict[str, str]]) -> Dict[str, float]:
-        encoding = self.tokenizer.apply_chat_template(
-            messages,
-            return_tensors="pt",
-            padding=True,
-            truncation=self.truncation,
-            max_length=self.max_length,
-        )
-        if isinstance(encoding, torch.Tensor):
-            input_ids = encoding.to(self.device)
-            attention_mask = None
-        else:
-            input_ids = encoding["input_ids"].to(self.device)
-            attention_mask = encoding.get("attention_mask")
-            attention_mask = attention_mask.to(self.device) if attention_mask is not None else None
+        """Score one conversation; use score_pair for preference comparisons."""
         with torch.no_grad():
-            output = self.model(input_ids=input_ids, attention_mask=attention_mask)
-            score = output.score.float().item()
-        return {"score": score}
+            output = _score_messages(
+                self.model, self.tokenizer, messages, self.device, self.max_length
+            )
+        return {"score": output.score.float().item()}
+
+    def score_pair(self, prompt, chosen, rejected) -> Dict[str, float]:
+        """Compare two continuations with one gate computed from their shared prompt."""
+        chosen_messages = prompt + (chosen if isinstance(chosen, list) else [
+            {"role": "assistant", "content": chosen}
+        ])
+        rejected_messages = prompt + (rejected if isinstance(rejected, list) else [
+            {"role": "assistant", "content": rejected}
+        ])
+        chosen_out, rejected_out, gate = _score_pair_shared_gate(
+            self.model, self.tokenizer, prompt, chosen_messages, rejected_messages,
+            self.device, self.max_length,
+        )
+        return {
+            "chosen": chosen_out.score.float().item(),
+            "rejected": rejected_out.score.float().item(),
+            "margin": (chosen_out.score - rejected_out.score).float().item(),
+            "gating_output": gate.float().cpu().squeeze(0).tolist(),
+        }
+
+
 
 
 def main() -> None:
@@ -57,7 +66,7 @@ def main() -> None:
     parser = ArgumentParser(description="Run quick prediction comparison using packaged reward model.")
     parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
     parser.add_argument("--model_path", type=str, default=None, help="Optional override for packaged model path.")
-    parser.add_argument("--model_parent_dir", type=str, default="model", help="Optional packaged model parent directory.")
+    parser.add_argument("--model_parent_dir", type=str, default=None, help="Packaged model parent directory (default: inference.model_parent_dir or model).")
     parser.add_argument("--model_name", type=str, default=None, help="Optional packaged model directory name.")
     args = parser.parse_args()
 
@@ -211,9 +220,19 @@ def main() -> None:
     print(f"{'Example':<55} {'Good':>7} {'Bad':>7}")
     print(f"{'='*70}")
     for ex in examples:
-        score_good = rm(ex["good"])
-        score_bad = rm(ex["bad"])
-        print(f"{ex['label']:<55} {score_good['score']:>7.4f} {score_bad['score']:>7.4f}")
+        prefix_length = 0
+        for good_message, bad_message in zip(ex["good"], ex["bad"]):
+            if good_message != bad_message:
+                break
+            prefix_length += 1
+        if prefix_length == 0:
+            raise ValueError(f"Example has no shared prompt: {ex['label']}")
+        result = rm.score_pair(
+            ex["good"][:prefix_length],
+            ex["good"][prefix_length:],
+            ex["bad"][prefix_length:],
+        )
+        print(f"{ex['label']:<55} {result['chosen']:>7.4f} {result['rejected']:>7.4f}")
     print(f"{'='*70}")
 
 
