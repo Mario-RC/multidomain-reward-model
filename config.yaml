@@ -1,7 +1,7 @@
 # ================================================================================
 #  Multi-Domain Reward Model Pipeline — Configuration
 # ================================================================================
-#  Change model_path and model_family in each stage before running.
+#  Use --model_key with the registry below, or override model_path/model_family per stage.
 #
 #  Available models:
 #    llama3  | sfairXC/FsfairX-LLaMA3-RM-v0.1         | multi-domain-rm-fsfairx-llama-3-8b-it
@@ -11,6 +11,36 @@
 #    llama3  | Skywork/Skywork-Reward-V2-Llama-3.1-8B | multi-domain-rm-skywork-llama-3.1-8b-it
 #    qwen3   | Skywork/Skywork-Reward-V2-Qwen3-8B     | multi-domain-rm-skywork-qwen-3-8b-it
 # ================================================================================
+
+
+# --- Model registry ---
+# Select any entry with --model_key; explicit CLI flags still take priority.
+
+model_registry:
+  fsfair_llama3:
+    model_path: sfairXC/FsfairX-LLaMA3-RM-v0.1
+    model_family: llama3
+    output_model_name: multi-domain-rm-fsfairx-llama-3-8b-it
+  fsfair_gemma2:
+    model_path: sfairXC/FsfairX-Gemma2-RM-v0.1
+    model_family: gemma2
+    output_model_name: multi-domain-rm-fsfairx-gemma-2-9b-it
+  nemotron_qwen3:
+    model_path: nvidia/Qwen3-Nemotron-8B-BRRM
+    model_family: qwen3
+    output_model_name: multi-domain-rm-qwen-3-nemotron-8b-it
+  mistral:
+    model_path: weqweasdas/RM-Mistral-7B
+    model_family: mistral
+    output_model_name: multi-domain-rm-mistral-7b-it
+  skywork_llama3:
+    model_path: Skywork/Skywork-Reward-V2-Llama-3.1-8B
+    model_family: llama3
+    output_model_name: multi-domain-rm-skywork-llama-3.1-8b-it
+  skywork_qwen3:
+    model_path: Skywork/Skywork-Reward-V2-Qwen3-8B
+    model_family: qwen3
+    output_model_name: multi-domain-rm-skywork-qwen-3-8b-it
 
 
 # --- Stage 1: Multi-objective regression ---
@@ -36,35 +66,32 @@ stage_1_train:
 
 # --- Stage 2: Gating network ---
 #
-#  Run stage_2_prepare once per dataset, changing dataset_path and
-#  output_dataset_name each time:
-#
-#  Dataset         │ dataset_path                              │ output_dataset_name                │ dataset_split
-#  ────────────────┼───────────────────────────────────────────┼────────────────────────────────────┼──────────────
-#  multi-objective │ data/dataset/Multi-Domain-Data-Scoring            │ Multi-Domain-Data-Scoring          │ train
-#  preference      │ data/dataset/Multi-Domain-Data-Preference-Pairs   │ Multi-Domain-Data-Preference-Pairs │ train
-#  reference       │ RLHFlow/UltraFeedback-preference-standard │ UltraFeedback-preference-standard  │ train
-#  reward-bench    │ allenai/reward-bench                      │ reward-bench                       │ filtered
+#  Stage 2 preparation builds prompt, chosen, and rejected embeddings for the
+#  preference data. Reference and RewardBench embeddings are only needed when
+#  their corresponding Stage 2 options are enabled.
 
 stage_2_prepare:
   model_path: sfairXC/FsfairX-LLaMA3-RM-v0.1
   model_family: llama3
   dataset_path: data/dataset/Multi-Domain-Data-Preference-Pairs
-  output_dataset_name: Multi-Domain-Data-Preference-Pairs
+  output_dataset_name: Multi-Domain-Data-Preference-Pairs-SharedGate
   dataset_split: train
   source: null
+  reuse_candidate_embeddings_path: null
+  selection_manifest: null
   n_shards: 1
   shard_idx: 1
   device: 0
   seq_len: 8192
+  prompt_batch_size: 8
 
 stage_2_train:
   model_path: sfairXC/FsfairX-LLaMA3-RM-v0.1
   model_family: llama3
   multi_objective_dataset_name: Multi-Domain-Data-Scoring
-  preference_dataset_name: Multi-Domain-Data-Preference-Pairs
+  preference_dataset_name: Multi-Domain-Data-Preference-Pairs-SharedGate
   reference_dataset_name: null
-  debiasing_dims: [18, 20, 22]  # mu_coherence, mu_cultural_value, mu_naturalness
+  debiasing_dims: [-1]
   temperature: 2.0
   n_steps: 30000
   seed: 0
@@ -76,13 +103,23 @@ stage_2_train:
   batch_size: 2048
   corr_threshold: 0.04
   logit_scale: 2.0
+  learnable_logit_scale: false
+  domain_loss_weight: 0.25
+  entropy_weight: 0.02
+  entropy_floor_fraction: 0.35
+  load_balance_weight: 0.05
+  balance_difficulties: false
+  attribute_subset: full
+  exclude_attributes: []
+  balance_domains: true
   eval_every: 200
   patience: 15
+  train_on_all: false
   curriculum: false
   curriculum_phase1_frac: 0.20
   curriculum_phase2_frac: 0.50
   dataset_split: train
-  eval: reward-bench
+  eval: null
   eval_split: filtered
   device: "0"
   max_samples: null
@@ -95,8 +132,9 @@ stage_3_package:
   model_path: sfairXC/FsfairX-LLaMA3-RM-v0.1
   model_family: llama3
   multi_objective_dataset_name: Multi-Domain-Data-Scoring
-  preference_dataset_name: Multi-Domain-Data-Preference-Pairs
+  preference_dataset_name: Multi-Domain-Data-Preference-Pairs-SharedGate
   reference_dataset_name: null
+  debiasing_dims: [-1]
   temperature: 2.0
   n_steps: 30000
   seed: 0
@@ -108,7 +146,15 @@ stage_3_package:
   batch_size: 2048
   corr_threshold: 0.04
   logit_scale: 2.0
+  domain_loss_weight: 0.25
+  entropy_weight: 0.02
+  entropy_floor_fraction: 0.35
+  load_balance_weight: 0.05
+  balance_difficulties: false
+  attribute_subset: full
+  exclude_attributes: []
   curriculum: false
+  train_on_all: false
   model_parent_dir: model
   stage_1_weights_path: null
   output_model_name: multi-domain-rm-fsfairx-llama-3-8b-it
@@ -126,12 +172,15 @@ inference:
 
 analyze_correlations:
   dataset_path: data/dataset/Multi-Domain-Data-Scoring.jsonl
+  split: train
   threshold: 0.5
 
 # --- Compare models ---
 
 compare_models:
   model_parent_dir: model
+  models: null
+  no_plots: false
   no_baselines: false
 
 
