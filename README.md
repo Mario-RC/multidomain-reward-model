@@ -1,48 +1,54 @@
 # Multi-Domain Reward Model
 
-This directory contains a multi-objective reward model that evaluates responses across four complementary domains: **Coherence**, **Commonsense**, **Empathy** and **Multicultural**. The model learns 23 fine-grained attributes spanning these domains and combines them through a prompt-conditioned gating network to produce a single preference score, enabling reward evaluation that captures domain-specific nuances.
+This directory contains a multi-objective reward-model pipeline that evaluates responses across four complementary domains: **Coherence**, **Commonsense**, **Empathy**, and **Multicultural understanding**. Each model predicts 23 fine-grained attributes and combines them through a prompt-conditioned gating network to produce one preference score.
+
+The current architecture uses a **shared prompt gate**: the gate is computed from the prompt alone and reused when scoring both the chosen and rejected responses. This keeps routing independent of candidate-specific content and makes pairwise comparisons consistent.
 
 ## Project Goal
 
 The goal is to train a reward model in three stages:
 
-1. **Stage 1 (Multi-objective regression):** Extract embeddings from conversations and adjust weights per attribute.
-2. **Stage 2 (Gating network):** Learn to combine the objectives into a final preference score.
-3. **Stage 3 (Packaging):** Merge Stage 1 regression weights and Stage 2 gating weights into a final packaged reward model for inference.
+- **Stage 1 — Multi-objective regression:** extract response representations and fit one regression head over the 23 attributes.
+- **Stage 2 — Shared gating network:** learn how to combine the attributes for each prompt using preference pairs.
+- **Stage 3 — Packaging:** combine the base reward model, Stage 1 regression weights, and Stage 2 gate into a Transformers-compatible model.
 
 ---
 
 ## Data Source
 
-The multi-domain data (Multi-Domain-Data-Scoring.jsonl & Multi-Domain-Data-Preference-Pairs.jsonl) come from:
+The multi-domain data (`Multi-Domain-Data-Scoring.jsonl` and `Multi-Domain-Data-Preference-Pairs.jsonl`) come from:
 
-- https://github.com/mestecha/multidomain_data_scoring
+- [mestecha/multidomain_data_scoring](https://github.com/mestecha/multidomain_data_scoring)
 
 ### Datasets used
 
 - **Multi-objective data:** [`Multi-Domain-Data-Scoring`](https://github.com/mestecha/multidomain_data_scoring/tree/main)
 - **Preference data:** [`Multi-Domain-Data-Preference-Pairs`](https://github.com/mestecha/multidomain_data_scoring/tree/main)
-- **Reference data:** [`RLHFlow/UltraFeedback-preference-standard`](https://huggingface.co/datasets/RLHFlow/UltraFeedback-preference-standard)
-- **Reward bench:** [`allenai/reward-bench`](https://huggingface.co/datasets/allenai/reward-bench)
+- **Optional reference data:** [`RLHFlow/UltraFeedback-preference-standard`](https://huggingface.co/datasets/RLHFlow/UltraFeedback-preference-standard)
+- **Optional evaluation data:** [`allenai/reward-bench`](https://huggingface.co/datasets/allenai/reward-bench)
+
+Raw datasets, generated embeddings, checkpoints, and evaluation outputs are intentionally excluded from version control.
 
 ---
 
 ## Base Models
 
-The following base reward models have been used in this project:
+The pipeline supports the following base reward models:
 
-- **FsfairX Llama3:** [`sfairXC/FsfairX-LLaMA3-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1)
-- **FsfairX Gemma2:** [`sfairXC/FsfairX-Gemma2-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-Gemma2-RM-v0.1)
-- **Qwen3 Nemotron:** [`nvidia/Qwen3-Nemotron-8B-BRRM`](https://huggingface.co/nvidia/Qwen3-Nemotron-8B-BRRM)
+- **FsfairX Llama 3:** [`sfairXC/FsfairX-LLaMA3-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1)
+- **FsfairX Gemma 2:** [`sfairXC/FsfairX-Gemma2-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-Gemma2-RM-v0.1)
+- **Qwen 3 Nemotron:** [`nvidia/Qwen3-Nemotron-8B-BRRM`](https://huggingface.co/nvidia/Qwen3-Nemotron-8B-BRRM)
 - **Mistral:** [`weqweasdas/RM-Mistral-7B`](https://huggingface.co/weqweasdas/RM-Mistral-7B)
-- **Skywork Llama3.1:** [`Skywork/Skywork-Reward-V2-Llama-3.1-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Llama-3.1-8B)
-- **Skywork Qwen3:** [`Skywork/Skywork-Reward-V2-Qwen3-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-8B)
+- **Skywork Llama 3.1:** [`Skywork/Skywork-Reward-V2-Llama-3.1-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Llama-3.1-8B)
+- **Skywork Qwen 3:** [`Skywork/Skywork-Reward-V2-Qwen3-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-8B)
+
+The architecture family passed to the scripts is one of `llama3`, `gemma2`, `qwen3`, `mistral`, or `auto`.
 
 ---
 
 ## Working Attributes
 
-This version uses **23 custom attributes** defined in `attributes.py` (single source of truth, imported by all scripts):
+This version uses **23 custom attributes** defined in `attributes.py`, which is the single source of truth imported by training, evaluation, and inference scripts.
 
 ### Coherence (`co_`)
 
@@ -79,231 +85,272 @@ This version uses **23 custom attributes** defined in `attributes.py` (single so
 - `mu_empathy`
 - `mu_naturalness`
 
-> Note: These 23 attributes are the regression targets for Stage 1.
+These attributes are always the 23 regression targets in Stage 1. Stage 2 can mask reversible subsets for controlled experiments without changing the Stage 1 representation.
 
 ---
 
-## Quickstart Execution Flow
+## Installation
 
-This environment requires **Python 3.12**. Create or activate a Python 3.12 virtual environment before installing the dependencies.
+The project requires **Python 3.12**.
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-> Recommended: install `flash-attn` to speed up attention.
+For development and regression tests:
 
-Base script: `mdorm.sh`
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Installing `flash-attn` is optional and can accelerate supported attention implementations.
+
+---
+
+## Quickstart Execution Flow
+
+The default entry point is `mdorm.sh`:
 
 ```bash
 ./mdorm.sh
 ```
 
-`mdorm.sh` is intentionally fixed to FsfairX Llama3 defaults for a stable baseline run.
+The script provides a stable FsfairX Llama 3 baseline. For another backbone or a custom experiment, edit `config.yaml` or call each stage explicitly as described below. CLI arguments override values read from the configuration file.
 
-### Stage 1 prepare
+### Stage 1: prepare multi-objective representations
 
 ```bash
 python3 stage-1_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \      # Base reward model to extract embeddings from
-  --model_family llama3 \                            # Architecture family (llama3, gemma2, qwen3, mistral)
-  --dataset_path data/dataset/Multi-Domain-Data-Scoring \    # Path to multi-objective scoring dataset
-  --output_dataset_name Multi-Domain-Data-Scoring \  # Name for saved embeddings
-  --dataset_split train \                            # Dataset split to process
-  --n_shards 1 \                                     # Total shards (for parallel processing)
-  --shard_idx 1 \                                    # Current shard index
-  --device 0                                         # GPU device index
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --model_family llama3 \
+  --dataset_path data/dataset/Multi-Domain-Data-Scoring \
+  --output_dataset_name Multi-Domain-Data-Scoring \
+  --dataset_split train \
+  --n_shards 1 \
+  --shard_idx 1 \
+  --device 0
 ```
 
-### Stage 1 train
+Important options:
+
+- `--dataset_path` accepts one or more local JSON/JSONL paths; the extension is optional.
+- `--n_shards` and `--shard_idx` allow representation extraction to be distributed across GPUs.
+- `--max_seq_len` overrides the base model's maximum position length when truncation is required.
+- `--model_key` selects an entry from the six-backbone `model_registry` in `config.yaml`.
+
+### Stage 1: train the attribute regressors
 
 ```bash
 python3 stage-1_train.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \               # Base reward model (used to name outputs)
-  --model_family llama3 \                                     # Architecture family
-  --multi_objective_dataset_name Multi-Domain-Data-Scoring \  # Name of pre-computed embeddings
-  --dataset_split train                                       # Split to train on
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --model_family llama3 \
+  --multi_objective_dataset_name Multi-Domain-Data-Scoring \
+  --dataset_split train
 ```
 
-> **80pct vs 100pct weights:** Stage 1 splits the training data 80/20. It sweeps Ridge regression alphas on the 80% split, picks the best alpha by validation MSE on the 20% split, and then **retrains on 100% of the data** with that best alpha. Two weight files are saved:
-> - `_100pct.pt` — final weights retrained on all data with the best alpha (used by default in Stage 2 and Stage 3).
-> - `_80pct.pt` — weights from the validation-best model (80% training split only, useful as a sanity check).
->
-> Subsequent stages auto-resolve to `_100pct.pt` unless `--stage_1_weights_path` is explicitly passed.
+Stage 1 creates two regression-weight files:
 
-### Stage 2 prepare (preference data)
+- `_80pct.pt` contains the validation-best Ridge regressors fitted on the training portion of the internal 80/20 split.
+- `_100pct.pt` refits the selected regularization values on all available Stage 1 rows and is the default for later stages.
+
+Stage 2 and Stage 3 automatically resolve the `_100pct.pt` file unless `--stage_1_weights_path` is supplied explicitly.
+
+### Stage 2: prepare preference representations
 
 ```bash
 python3 stage-2_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \               # Base reward model
-  --model_family llama3 \                                     # Architecture family
-  --dataset_path data/dataset/Multi-Domain-Data-Preference-Pairs \    # Input preference pairs dataset
-  --output_dataset_name Multi-Domain-Data-Preference-Pairs \  # Name for saved embeddings
-  --dataset_split train \                                     # Dataset split to process
-  --n_shards 1 \                                              # Total shards
-  --shard_idx 1 \                                             # Current shard index
-  --device 0                                                  # GPU device index
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --model_family llama3 \
+  --dataset_path data/dataset/Multi-Domain-Data-Preference-Pairs \
+  --output_dataset_name Multi-Domain-Data-Preference-Pairs-SharedGate \
+  --dataset_split train \
+  --prompt_batch_size 8 \
+  --n_shards 1 \
+  --shard_idx 1 \
+  --device 0
 ```
 
-### Stage 2 prepare (reference data)
+This stage stores:
+
+- one prompt-only representation per preference pair;
+- separate final-response representations for the chosen and rejected candidates;
+- the pair domain plus stable prompt and pair identifiers. Prompt IDs drive grouped splitting; pair IDs support traceable downstream evaluation.
+
+The prompt-only representation is the input to the shared gate. Aligned candidate representations generated by the current format can be reused with `--reuse_candidate_embeddings_path`; saved pair IDs are checked before reuse, while `--selection_manifest` can retain a subset of pair IDs without rewriting the source dataset.
+
+### Optional Stage 2 preparation: reference data
 
 ```bash
 python3 stage-2_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \               # Base reward model
-  --model_family llama3 \                                     # Architecture family
-  --dataset_path RLHFlow/UltraFeedback-preference-standard \  # Reference dataset (HuggingFace)
-  --output_dataset_name UltraFeedback-preference-standard \   # Name for saved embeddings
-  --dataset_split train \                                     # Dataset split to process
-  --n_shards 1 \                                              # Total shards
-  --shard_idx 1 \                                             # Current shard index
-  --device 0                                                  # GPU device index
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --model_family llama3 \
+  --dataset_path RLHFlow/UltraFeedback-preference-standard \
+  --output_dataset_name UltraFeedback-preference-standard \
+  --dataset_split train \
+  --prompt_batch_size 8 \
+  --n_shards 1 \
+  --shard_idx 1 \
+  --device 0
 ```
 
-### Stage 2 prepare (reward-bench eval data)
+Reference representations are only required when Stage 2 debiasing is enabled.
+
+### Optional Stage 2 preparation: RewardBench
 
 ```bash
 python3 stage-2_prepare.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \  # Base reward model
-  --model_family llama3 \                        # Architecture family
-  --dataset_path allenai/reward-bench \          # RewardBench evaluation dataset
-  --output_dataset_name reward-bench \           # Name for saved embeddings
-  --dataset_split filtered \                     # Use filtered split
-  --n_shards 1 \                                 # Total shards
-  --shard_idx 1 \                                # Current shard index
-  --device 0                                     # GPU device index
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --model_family llama3 \
+  --dataset_path allenai/reward-bench \
+  --output_dataset_name reward-bench \
+  --dataset_split filtered \
+  --prompt_batch_size 8 \
+  --n_shards 1 \
+  --shard_idx 1 \
+  --device 0
 ```
 
-### Stage 2 train
+### Stage 2: train the shared gate
 
 ```bash
 python3 stage-2_train.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \                   # Base reward model (used for naming)
-  --model_family llama3 \                                         # Architecture family
-  --multi_objective_dataset_name Multi-Domain-Data-Scoring \      # Pre-computed embeddings for scoring data
-  --preference_dataset_name Multi-Domain-Data-Preference-Pairs \  # Pre-computed embeddings for preference pairs
-  --reference_dataset_name null \                                 # Reference dataset for debiasing (null = disabled)
-  --debiasing_dims 18 20 22 \                                     # Dims to decorrelate (mu_coherence, mu_cultural_value, mu_naturalness)
-  --temperature 2.0 \                                             # Softmax temperature for gating weights
-  --n_steps 30000 \                                               # Training steps
-  --seed 0 \                                                      # Random seed
-  --n_hidden 1 \                                                  # Hidden layers in gating MLP
-  --hidden_size 64 \                                              # Hidden layer dimension
-  --learning_rate 0.0005 \                                        # AdamW learning rate
-  --weight_decay 0.0 \                                            # L2 regularization
-  --dropout 0.1 \                                                 # Dropout probability
-  --batch_size 2048 \                                             # Training batch size
-  --corr_threshold 0.04 \                                         # Max allowed correlation after debiasing
-  --logit_scale 2.0 \                                             # Post-softmax scaling factor
-  --eval_every 200 \                                              # Validation frequency (steps)
-  --patience 15 \                                                 # Early stopping patience (based on val_loss)
-  --curriculum \                                                  # Enable phased curriculum learning (easy → easy+medium → all)
-  --curriculum_phase1_frac 0.20 \                                 # Fraction of n_steps for easy-only phase
-  --curriculum_phase2_frac 0.50 \                                 # Fraction of n_steps to end easy+medium phase
-  --dataset_split train \                                         # Split to train on
-  --eval reward-bench \                                           # Eval dataset name
-  --device 0                                                      # GPU device index
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --model_family llama3 \
+  --multi_objective_dataset_name Multi-Domain-Data-Scoring \
+  --preference_dataset_name Multi-Domain-Data-Preference-Pairs-SharedGate \
+  --reference_dataset_name null \
+  --debiasing_dims -1 \
+  --temperature 2.0 \
+  --n_steps 30000 \
+  --seed 0 \
+  --n_hidden 1 \
+  --hidden_size 64 \
+  --learning_rate 0.0005 \
+  --weight_decay 0.0 \
+  --dropout 0.1 \
+  --batch_size 2048 \
+  --logit_scale 2.0 \
+  --domain_loss_weight 0.25 \
+  --entropy_weight 0.02 \
+  --entropy_floor_fraction 0.35 \
+  --load_balance_weight 0.05 \
+  --balance_domains \
+  --eval_every 200 \
+  --patience 15 \
+  --dataset_split train \
+  --device 0
 ```
 
-> **`--stage_1_weights_path` (optional):** Override which Stage 1 regression weights to load. If omitted, auto-resolves to `model/regression_weights/{model_name}_{multi_objective_dataset_name}_100pct.pt`. If a bare filename is given (no `/`), the `_100pct` suffix is appended automatically unless the name already ends with `_100pct.pt` or `_80pct.pt`.
->
-> **Reference dataset and `debiasing_dims`:** The reference dataset is only used when `debiasing_dims` contains indices >= 0. If `debiasing_dims` is `-1` (disabled), the reference dataset will **not** be loaded or used, even if provided.
->
-> `debiasing_dims` accepts one or more attribute dimension indices whose influence you want to decorrelate from the rest. For each target dimension and each other dimension *d*, it finds the smallest penalty *p* such that `adjusted_d = d - p * target_dim` has a Spearman correlation with the target dimension below `corr_threshold`. The result is a `reward_transform_matrix` that subtracts the leaking influence of the chosen dimensions before the gating network combines scores.
->
-> Examples:
-> - In ArmoRM's original setup, `debiasing_dims 4` pointed to `helpsteer-verbosity` to prevent longer responses from inflating all reward scores.
-> - In a multi-domain setup, you could set `debiasing_dims` to one or more dominant dimensions (e.g. `--debiasing_dims 21 18` for cultural and empathy attributes) if you observe them correlating too strongly with others in the reference dataset.
+The shared-gate training path has several important properties:
 
-### Stage 3 Packaging Model
+- Chosen and rejected candidates always use the same prompt-derived gate.
+- Train/validation partitions are grouped by prompt ID to prevent prompt overlap.
+- `--entropy_weight` and `--entropy_floor_fraction` control per-example routing concentration.
+- `--load_balance_weight` controls batch-level use of the available attributes.
+- `--balance_domains` samples training examples uniformly across non-empty domains.
+- `--balance_difficulties` optionally balances non-empty domain-by-difficulty cells.
+- `--train_on_all` refits a selected configuration on all training groups for a fixed number of steps.
+- `--checkpoint_tag` gives experiment checkpoints an explicit, filesystem-safe identifier.
+
+`--attribute_subset` and `--exclude_attributes` provide reversible masks over the 23 attributes. They do not retrain or alter the Stage 1 regressors.
+
+#### Optional debiasing
+
+Set `--debiasing_dims -1` to disable debiasing. When one or more non-negative indices are supplied, the reference dataset is used to construct a `reward_transform_matrix` that reduces correlations between selected dimensions and the remaining attributes. `--corr_threshold` controls the maximum target correlation. Signed penalties are considered, and training fails rather than saving a partial transform if the requested threshold cannot be reached.
+
+The reference dataset is not loaded when debiasing is disabled, even if a reference dataset name is present in the configuration.
+
+### Stage 3: package the final model
+
+The most reliable packaging interface passes the selected Stage 1 and Stage 2 checkpoints explicitly:
 
 ```bash
 python3 stage-3_package_model.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \                   # Base reward model to package
-  --model_family llama3 \                                         # Architecture family
-  --multi_objective_dataset_name Multi-Domain-Data-Scoring \      # Used to locate stage-1 regression weights
-  --preference_dataset_name Multi-Domain-Data-Preference-Pairs \  # Used to locate stage-2 checkpoint
-  --reference_dataset_name null \                                 # Must match value used in stage-2 training
-  --temperature 2.0 \                                             # Must match stage-2 value
-  --n_steps 30000 \                                               # Must match stage-2 value
-  --seed 0 \                                                      # Must match stage-2 value
-  --n_hidden 1 \                                                  # Must match stage-2 value
-  --hidden_size 64 \                                              # Must match stage-2 value
-  --learning_rate 0.0005 \                                        # Must match stage-2 value
-  --weight_decay 0.0 \                                            # Must match stage-2 value
-  --dropout 0.1 \                                                 # Must match stage-2 value
-  --batch_size 2048 \                                             # Must match stage-2 value
-  --corr_threshold 0.04 \                                         # Must match stage-2 value
-  --logit_scale 2.0 \                                             # Must match stage-2 value
-  --curriculum \                                                  # Must match stage-2 value (adds _cv suffix to checkpoint name)
-  --output_model_name multi-domain-rm-fsfairx-llama-3-8b-it               # Name for the packaged HuggingFace model
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --model_family llama3 \
+  --stage_1_weights_path model/regression_weights/FsfairX-LLaMA3-RM-v0.1_Multi-Domain-Data-Scoring_100pct.pt \
+  --stage_2_weights_path model/gating_network/<selected-shared-gate-checkpoint>.pt \
+  --output_model_name multi-domain-rm-fsfairx-llama-3-8b-it
 ```
 
-> All hyperparameters (`--temperature`, `--n_steps`, `--seed`, `--learning_rate`, `--weight_decay`, `--n_hidden`, `--hidden_size`, `--dropout`, `--batch_size`, `--corr_threshold`, `--logit_scale`) must match the values used during Stage 2 training so the correct checkpoint file is found. Pass `null` for reference_dataset_name if Stage 2 was trained without a reference dataset. If Stage 2 was trained with `--curriculum`, add `--curriculum` here too so the `_cv` suffix is included in the checkpoint filename.
->
-> **`--stage_1_weights_path` (optional):** Same auto-resolution logic as Stage 2 — defaults to `_100pct.pt` if omitted.
+Alternatively, omit the explicit checkpoint paths and provide the same Stage 2 naming parameters used during training. The packaging script then resolves the checkpoint automatically. Checkpoint filenames encode debiasing, routing-loss, sampling, attribute-ablation, curriculum, tag, and refit settings through one naming function shared by Stage 2 and Stage 3.
 
-### Evaluate the packaged model
+A packaged directory contains the sharded weights, tokenizer, configuration, chat template, custom modeling code, and weight index required by Transformers. The configuration declares:
+
+- `RewardModelWithGating` as its architecture;
+- `modeling_custom.RewardModelWithGating` in `auto_map`;
+- `shared_prompt_gating=true`;
+- `num_objectives=23`.
+
+---
+
+## Evaluation and Analysis
+
+### Evaluate a packaged model
 
 ```bash
 python3 evaluate.py \
-  --model_name multi-domain-rm-fsfairx-llama-3-8b-it \  # Name of the packaged model to evaluate
-  --eval data/test                              # Optional: cultural test data directory
+  --model_path model/q1multi_v1/multi-domain-rm-fsfairx-gemma2 \
+  --scoring_data_path data/dataset/Multi-Domain-Data-Scoring \
+  --preference_data_path data/dataset/Multi-Domain-Data-Preference-Pairs
 ```
 
-Results are auto-saved to `model/<model_name>/results/eval.json` for each model. Per-model plots are generated in `model/<model_name>/results/plots/`.
+The evaluator reports scoring metrics, overall preference accuracy, domain-level results, gate diagnostics, and difficulty slices. By default it also saves per-pair margins that can be used for paired statistical tests. Use `--skip_pair_predictions` when those records are not required.
 
-> **Dual scoring evaluation (80pct / 100pct):** If the `_80pct.pt` weights file exists alongside the `_100pct.pt` used during packaging, `evaluate.py` evaluates scoring with **both** weight sets. Results are saved as `scoring_80pct` and `scoring_100pct` in the output JSON. The 80pct result reflects performance of the validation-best model; the 100pct result reflects the final model retrained on all data. Preference and cultural evaluations always use the 100pct weights (packaged in the model).
+Optional switches include `--skip_scoring`, `--skip_preference`, `--max_samples`, `--max_length`, `--eval`, and `--output_json`.
 
-### Run quick prediction comparison
+### Run a quick prediction comparison
 
 ```bash
 python3 predict.py \
-  --model_name multi-domain-rm-fsfairx-llama-3-8b-it  # Name of the packaged model to run predictions with
+  --model_path model/q1multi_v1/multi-domain-rm-fsfairx-gemma2
 ```
+
+`predict.py` renders one prompt and two candidate conversations, computes the prompt gate once, and reuses it for both scores.
 
 ### Analyze attribute correlations
 
-Inspect inter-attribute and attribute-vs-length correlations in the scoring data. Helps decide whether `--debiasing_dims` is needed and which dimensions to target.
-
 ```bash
 python3 analyze_correlations.py \
-  --dataset_path data/dataset/Multi-Domain-Data-Scoring.jsonl \  # Path to scoring data JSONL
-  --threshold 0.3                                        # Correlation threshold to flag high-correlation pairs
+  --dataset_path data/dataset/Multi-Domain-Data-Scoring.jsonl \
+  --split train \
+  --threshold 0.3
 ```
 
-Output sections:
-- **Attribute statistics** — Unique values, range, mean, std per attribute. Flags low-variance attributes (std < 0.10).
-- **Attribute vs response length** — Spearman correlation between each attribute and response length. Flags length-biased attributes.
-- **Inter-attribute correlations** — Pairwise Spearman between all within-domain attribute pairs.
-- **Within-domain correlation matrices** — Full NxN heatmap per domain with high-correlation markers.
-- **PCA dimensionality analysis** — Effective independent dimensions per domain (eigenvalue decomposition).
-- **Dimension dominance summary** — Which attributes appear in the most high-correlation pairs.
-- **Debiasing recommendations** — Actionable suggestions: low-variance dims, redundant pairs, length-biased dims. Outputs the attribute indices to use with `--debiasing_dims` in `stage-2_train.py`.
+The report includes:
 
-### Evaluate baseline
+- per-attribute range, variance, and low-variance flags;
+- correlations between attributes and response length;
+- within-domain pairwise Spearman correlations;
+- correlation matrices and high-correlation markers;
+- PCA-based dimensionality summaries;
+- attribute dominance and debiasing suggestions.
 
-Evaluate a base reward model (as-is from HuggingFace) using its native reward score. Use `--model_name` to save results as `eval_baseline.json` inside the corresponding packaged model's results directory.
+### Evaluate a base-model baseline
+
+Scalar reward model:
 
 ```bash
-# Scalar RM — scoring + preference + cultural (FsfairX LLaMA3, FsfairX Gemma2, Mistral, Skywork LLaMA3.1, Skywork Gemma2)
 python3 evaluate_baseline.py \
-  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \  # Base reward model path
-  --eval data/test \                              # Optional: cultural test data directory
-  --model_name multi-domain-rm-fsfairx-llama-3-8b-it      # Save results under this model's directory
-
-# Generative judge — preference only (Qwen3-Nemotron)
-python3 evaluate_baseline.py \
-  --model_path nvidia/Qwen3-Nemotron-8B-BRRM \  # Base reward model path
-  --generative_judge \                          # Use generative judge mode
-  --skip_scoring \                              # Skip scoring, preference only
-  --model_name multi-domain-rm-qwen-3-nemotron-8b-it     # Save results under this model's directory
+  --model_path sfairXC/FsfairX-LLaMA3-RM-v0.1 \
+  --scoring_data_path data/dataset/Multi-Domain-Data-Scoring \
+  --preference_data_path data/dataset/Multi-Domain-Data-Preference-Pairs \
+  --model_name multi-domain-rm-fsfairx-llama-3-8b-it
 ```
 
-Results are saved to `model/<model_name>/results/eval_baseline.json`. Per-model plots are generated in `model/<model_name>/results/plots/`.
+Generative-judge mode for Qwen 3 Nemotron:
 
-### Compare models
+```bash
+python3 evaluate_baseline.py \
+  --model_path nvidia/Qwen3-Nemotron-8B-BRRM \
+  --preference_data_path data/dataset/Multi-Domain-Data-Preference-Pairs \
+  --generative_judge \
+  --skip_scoring \
+  --model_name multi-domain-rm-qwen-3-nemotron-8b-it
+```
 
-Load pre-computed results from all models and produce side-by-side comparison tables, CSVs, and plots.
+### Compare packaged models
 
 ```bash
 python3 compare_models.py \
@@ -318,41 +365,101 @@ python3 compare_models.py \
     multi-domain-rm-skywork-qwen-3-8b-it
 ```
 
-Discovers all models in `model/` that have `results/eval.json` or `results/eval_baseline.json`. Output includes:
-- **Comparison tables** — Preference accuracy, scoring regression, global score distribution.
-- **CSVs** — Saved to `model/compare_models/`.
-- **Plots** — Comparative plots in `model/compare_models/`.
+The comparison utility produces side-by-side tables, CSV files, and optional plots for all discovered evaluation results.
 
 ---
 
-## Alternative Flow: `config.yaml`
+## Configuration-Driven Flow
 
-Instead of hardcoded CLI parameters, you can use `config.yaml` to configure the pipeline. Each stage has its own flat section with `model_path`, `model_family`, and all relevant parameters. Change them directly before each training run.
+Every main script accepts `--config_path config.yaml`. The configuration contains a six-backbone `model_registry` plus flat sections for Stage 1 preparation/training, Stage 2 preparation/training, Stage 3 packaging, inference, correlations, model comparison, and baseline evaluation.
 
-> CLI arguments still override `config.yaml` values when explicitly provided.
-
-### Config-driven commands
-
-All scripts accept `--config_path config.yaml` (default) to read their corresponding section. For example:
+For example:
 
 ```bash
-python3 stage-1_prepare.py --config_path config.yaml
+python3 stage-1_prepare.py --config_path config.yaml --model_key fsfair_gemma2
+python3 stage-1_train.py --config_path config.yaml --model_key fsfair_gemma2
+python3 stage-2_prepare.py --config_path config.yaml --model_key fsfair_gemma2
+python3 stage-2_train.py --config_path config.yaml --model_key fsfair_gemma2
+python3 stage-3_package_model.py --config_path config.yaml --model_key fsfair_gemma2
+python3 analyze_correlations.py --config_path config.yaml
+python3 compare_models.py --config_path config.yaml
 ```
+
+CLI values explicitly supplied by the user take precedence over their `config.yaml` counterparts. Use the same `--model_key` in each training stage; the registry resolves the base path, architecture family, and final package name consistently.
 
 ---
 
-## Hugging Face Models
+## Released Hugging Face Models
 
-The packaged multi-domain reward models are available on Hugging Face under the `mario-rc` namespace:
+| Model | Base reward model | Test accuracy (%) | Scoring Spearman |
+| :--- | :--- | :---: | :---: |
+| [**`multi-domain-rm-fsfairx-gemma-2-9b-it`**](https://huggingface.co/mario-rc/multi-domain-rm-fsfairx-gemma-2-9b-it) | [sfairXC/FsfairX-Gemma2-RM-v0.1](https://huggingface.co/sfairXC/FsfairX-Gemma2-RM-v0.1) | **88.01** | 0.7346 |
+| [**`multi-domain-rm-skywork-qwen-3-8b-it`**](https://huggingface.co/mario-rc/multi-domain-rm-skywork-qwen-3-8b-it) | [Skywork/Skywork-Reward-V2-Qwen3-8B](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-8B) | **87.82** | 0.7156 |
+| [**`multi-domain-rm-fsfairx-llama-3-8b-it`**](https://huggingface.co/mario-rc/multi-domain-rm-fsfairx-llama-3-8b-it) | [sfairXC/FsfairX-LLaMA3-RM-v0.1](https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1) | **86.86** | 0.7108 |
+| [**`multi-domain-rm-skywork-llama-3.1-8b-it`**](https://huggingface.co/mario-rc/multi-domain-rm-skywork-llama-3.1-8b-it) | [Skywork/Skywork-Reward-V2-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-Reward-V2-Llama-3.1-8B) | **86.82** | 0.7264 |
+| [**`multi-domain-rm-mistral-7b-it`**](https://huggingface.co/mario-rc/multi-domain-rm-mistral-7b-it) | [weqweasdas/RM-Mistral-7B](https://huggingface.co/weqweasdas/RM-Mistral-7B) | **84.41** | 0.6710 |
+| [**`multi-domain-rm-qwen-3-nemotron-8b-it`**](https://huggingface.co/mario-rc/multi-domain-rm-qwen-3-nemotron-8b-it) | [nvidia/Qwen3-Nemotron-8B-BRRM](https://huggingface.co/nvidia/Qwen3-Nemotron-8B-BRRM) | **83.65** | 0.6704 |
 
-| Model | Base reward model | Preference accuracy (%) | Scoring Spearman |
-| --- | --- | :---: | :---: |
-| [`multi-domain-rm-fsfairx-gemma-2-9b-it`](https://huggingface.co/mario-rc/multi-domain-rm-fsfairx-gemma-2-9b-it) | [`sfairXC/FsfairX-Gemma2-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-Gemma2-RM-v0.1) | 92.56 | 0.7346 |
-| [`multi-domain-rm-fsfairx-llama-3-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-fsfairx-llama-3-8b-it) | [`sfairXC/FsfairX-LLaMA3-RM-v0.1`](https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1) | 89.87 | 0.7108 |
-| [`multi-domain-rm-mistral-7b-it`](https://huggingface.co/mario-rc/multi-domain-rm-mistral-7b-it) | [`weqweasdas/RM-Mistral-7B`](https://huggingface.co/weqweasdas/RM-Mistral-7B) | 91.69 | 0.6710 |
-| [`multi-domain-rm-qwen-3-nemotron-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-qwen-3-nemotron-8b-it) | [`nvidia/Qwen3-Nemotron-8B-BRRM`](https://huggingface.co/nvidia/Qwen3-Nemotron-8B-BRRM) | 93.36 | 0.6704 |
-| [`multi-domain-rm-skywork-llama-3.1-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-skywork-llama-3.1-8b-it) | [`Skywork/Skywork-Reward-V2-Llama-3.1-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Llama-3.1-8B) | 92.69 | 0.7264 |
-| [`multi-domain-rm-skywork-qwen-3-8b-it`](https://huggingface.co/mario-rc/multi-domain-rm-skywork-qwen-3-8b-it) | [`Skywork/Skywork-Reward-V2-Qwen3-8B`](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-8B) | 95.72 | 0.7156 |
+---
+
+## Loading a Released Model
+
+Released packages use custom Transformers code, so `trust_remote_code=True` is required. For a preference pair, render the prompt separately, compute its gate once, and pass the same tensor as `gating_output_override` for both candidates.
+
+```python
+import torch
+from transformers import AutoModel, AutoTokenizer
+
+model_id = "mario-rc/multi-domain-rm-fsfairx-gemma-2-9b-it"
+tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+model = AutoModel.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    trust_remote_code=True,
+).eval()
+
+prompt = [{"role": "user", "content": "How can I support a friend who feels excluded?"}]
+chosen = prompt + [{
+    "role": "assistant",
+    "content": "Listen without judging, validate how they feel, and ask what support would help.",
+}]
+rejected = prompt + [{"role": "assistant", "content": "Tell them to ignore it."}]
+
+prompt_ids = tokenizer.apply_chat_template(
+    prompt,
+    tokenize=True,
+    add_generation_prompt=True,
+    return_tensors="pt",
+).to(model.device)
+chosen_ids = tokenizer.apply_chat_template(
+    chosen,
+    tokenize=True,
+    add_generation_prompt=False,
+    return_tensors="pt",
+).to(model.device)
+rejected_ids = tokenizer.apply_chat_template(
+    rejected,
+    tokenize=True,
+    add_generation_prompt=False,
+    return_tensors="pt",
+).to(model.device)
+
+with torch.inference_mode():
+    gate = model.compute_gating(input_ids=prompt_ids)
+    chosen_score = model(
+        input_ids=chosen_ids,
+        gating_output_override=gate,
+    ).score
+    rejected_score = model(
+        input_ids=rejected_ids,
+        gating_output_override=gate,
+    ).score
+
+print({"chosen": chosen_score.item(), "rejected": rejected_score.item()})
+```
+
+For padded batches, pass the corresponding `attention_mask` to `compute_gating` and to the model calls. Always supply `gating_output_override` for shared-gate scoring, using the pattern above or the helpers in `utils.py`; candidate-conditioned routing would violate the evaluation protocol. Scores are intended for comparison within a prompt; they are not calibrated probabilities or universal utility values.
 
 ---
 
@@ -364,53 +471,80 @@ model/
 │   └── <model_name>/
 │       ├── <multi_objective_dataset_name>-<split>/
 │       │   └── <multi_objective_dataset_name>-<split>.safetensors
-│       │
-│       ├── reward-bench-filtered/
-│       │   └── reward-bench-filtered.safetensors
-│       │
 │       ├── <preference_dataset_name>-<split>/
 │       │   └── <preference_dataset_name>-<split>.safetensors
-│       │
-│       └── <reference_dataset_name>-<split>/
-│           └── <reference_dataset_name>-<split>.safetensors
-│
-├── gating_network/
-│   └── gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n30000_seed0_le0.0005_we0.0_n_1_hi64_dr0.1_ba2048_co0.04_lo2.0.pt
+│       ├── <reference_dataset_name>-<split>/
+│       │   └── <reference_dataset_name>-<split>.safetensors
+│       └── reward-bench-filtered/
+│           └── reward-bench-filtered.safetensors
 │
 ├── regression_weights/
 │   ├── <model_name>_<multi_objective_dataset_name>_80pct.pt
 │   └── <model_name>_<multi_objective_dataset_name>_100pct.pt
 │
-├── multi-domain-rm-<model_name>/
-│   ├── config.json
-│   ├── model-00001-of-0000X.safetensors
-│   ├── ...
-│   └── results/
-│       ├── eval.json
-│       ├── eval_baseline.json
-│       └── plots/
+├── gating_network/
+│   └── gating_network_sgv2_<model-and-training-configuration>.pt
 │
-└── compare_models/
-    ├── *.csv
-    └── *.png
+└── q1multi_v1/
+    └── multi-domain-rm-<model_name>/
+        ├── README.md
+        ├── chat_template.jinja
+        ├── config.json
+        ├── model-00001-of-0000X.safetensors
+        ├── model.safetensors.index.json
+        ├── modeling_custom.py
+        ├── requirements.txt
+        ├── tokenizer.json
+        ├── tokenizer_config.json
+        └── utils.py
 ```
+
+### Artifact paths
+
+- Stage 1/2 representations: `model/embeddings/<model_name>/<dataset_name>-<split>/*.safetensors`
+- Stage 1 regressors: `model/regression_weights/<model_name>_<dataset_name>_{80pct,100pct}.pt`
+- Stage 2 gates: `model/gating_network/gating_network_sgv2_<configuration>.pt`
+- Packaged releases: `model/q1multi_v1/multi-domain-rm-<model_name>/`
+- Evaluation results: `model/<model_name>/results/` or an explicit `--output_json` path
+
+Generated artifacts can be large and are ignored by Git.
 
 ---
 
-## Artifact Structure
+## Repository Structure
 
-- `model/embeddings/<model_name>/<dataset_name>/*.safetensors`
-- `model/gating_network/gating_network_<model_name>_mo_<multi_objective_dataset_name>_pref_<preference_dataset_name>_ref_<reference_dataset_name>_t2.0_n30000_seed0_le0.0005_we0.0_n_1_hi64_dr0.1_ba2048_co0.04_lo2.0.pt`
-- `model/regression_weights/<model_name>_<dataset_name>_100pct.pt`
-- `model/regression_weights/<model_name>_<dataset_name>_80pct.pt`
-- `model/<packaged_model_name>/`
+```text
+multidomain_model/
+├── attributes.py                # canonical 23-attribute definition
+├── config.yaml                  # configuration for all pipeline stages
+├── data/                        # dataset loaders and small templates
+├── mdorm.sh                     # baseline end-to-end entry point
+├── modeling_custom.py           # reward model with shared prompt gate
+├── requirements.txt             # runtime/training dependencies
+├── requirements-dev.txt         # development and test dependencies
+├── stage-1_prepare.py           # Stage 1 representation extraction
+├── stage-1_train.py             # multi-objective Ridge regression
+├── stage-2_prepare.py           # prompt and candidate representation extraction
+├── stage-2_train.py             # grouped shared-gate training
+├── stage-3_package_model.py     # Transformers package creation
+├── evaluate.py                  # packaged-model evaluation
+├── evaluate_baseline.py         # base-model evaluation
+├── predict.py                   # quick pairwise inference
+├── compare_models.py            # result aggregation and comparison
+├── analyze_correlations.py      # attribute-correlation analysis
+├── tests/                       # focused regression tests
+└── utils.py                     # shared data and scoring utilities
+```
+
+Generated experiment outputs, logs, intermediate checkpoints, and internal research documentation are kept locally and excluded from the public repository.
 
 ---
 
 ## Credits
 
-This work is based on the original [RLHFlow repository](https://github.com/RLHFlow/RLHF-Reward-Modeling) (ArmoRM), but this `multidomain_model` folder documents and executes a custom adaptation focused on:
+- **Reward-modeling foundation:** [ArmoRM / RLHFlow](https://github.com/RLHFlow/RLHF-Reward-Modeling)
+- **Multi-domain data:** [`mestecha/multidomain_data_scoring`](https://github.com/mestecha/multidomain_data_scoring)
 
-- custom multi-domain attributes,
-- data from `multidomain_data_scoring`,
-- and a more robust pipeline for local training.
+## License
+
+The project code is released under the [Apache License 2.0](LICENSE). Released checkpoints are also subject to the licenses and usage conditions of their respective base models and training datasets.
