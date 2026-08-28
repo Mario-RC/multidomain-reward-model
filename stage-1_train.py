@@ -15,7 +15,7 @@ from safetensors.torch import load_file
 from argparse import ArgumentParser
 import traceback  # For error logging
 from datetime import datetime
-from config_utils import load_yaml_config, apply_section_overrides
+from config_utils import load_yaml_config, apply_model_registry, apply_section_overrides
 
 print(f"\n### Stage 1: Train started at {datetime.now().isoformat()} ###")
 
@@ -30,7 +30,7 @@ selects the best regularization, and saves the resulting weights.
 # ---------------------------
 parser = ArgumentParser(description="Stage 1 Train: Linear probing on precomputed embeddings")
 parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
-parser.add_argument("--model_key", type=str, default=None, help="Model key defined in config.yaml:model:registry.")
+parser.add_argument("--model_key", type=str, default=None, help="Model key defined in config.yaml:model_registry.")
 parser.add_argument("--model_path", type=str, default=None, help="Path or HF ID of the base reward model (used for naming output).")
 parser.add_argument("--multi_objective_dataset_name", type=str, default=None, help="Dataset base name produced by stage-1_prepare (e.g., 'stage_1').")
 parser.add_argument("--dataset_split", type=str, default="train", help="Split tag used by stage-1_prepare for folder/filename suffix (e.g., train, all).")
@@ -41,7 +41,14 @@ args = parser.parse_args()
 
 config = load_yaml_config(args.config_path)
 args = apply_section_overrides(args, config.get("stage_1_train", {}))
+try:
+    args = apply_model_registry(args, config)
+except ValueError as error:
+    parser.error(str(error))
 
+
+if not args.model_path:
+    parser.error("--model_path is required via CLI, stage_1_train, or --model_key.")
 
 if not args.multi_objective_dataset_name:
     print("FATAL ERROR: --multi_objective_dataset_name is required (or set stage_1_train.multi_objective_dataset_name in config.yaml).")

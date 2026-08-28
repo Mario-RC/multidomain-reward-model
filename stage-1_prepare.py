@@ -15,8 +15,11 @@ from argparse import ArgumentParser
 import traceback
 import json
 from datetime import datetime
-from config_utils import load_yaml_config, apply_section_overrides
-from utils import _build_save_paths, _resolve_local_dataset_file, _load_tokenizer_robust, _requires_remote_code
+from config_utils import load_yaml_config, apply_model_registry, apply_section_overrides
+from utils import (
+    _attention_implementation, _build_save_paths, _resolve_local_dataset_file,
+    _load_tokenizer_robust, _requires_remote_code,
+)
 
 # Enable TF32 for faster matmul on supported GPUs
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -58,7 +61,7 @@ print(f"Using {len(attributes)} custom attributes for regression.")
 # Parse CLI arguments
 parser = ArgumentParser(description="Stage 1 Prepare: Extract embeddings and labels for multi-objective regression.")
 parser.add_argument("--config_path", type=str, default="config.yaml", help="Path to YAML config file.")
-parser.add_argument("--model_key", type=str, default=None, help="Model key defined in config.yaml:model:registry.")
+parser.add_argument("--model_key", type=str, default=None, help="Model key defined in config.yaml:model_registry.")
 parser.add_argument("--model_path", type=str, default=None, help="Path or HF ID of the base Reward Model.")
 parser.add_argument("--model_family", type=str, default="llama3", help="Model family (llama3, gemma2, qwen3, mistral, auto)")
 parser.add_argument("--dataset_path", type=str, nargs='+', default=None, help="Path(s) to local JSON/JSONL files. Extension is optional (e.g. data/dataset/Multi-Domain-Data-Scoring).")
@@ -72,6 +75,15 @@ args = parser.parse_args()
 
 config = load_yaml_config(args.config_path)
 args = apply_section_overrides(args, config.get("stage_1_prepare", {}))
+try:
+    args = apply_model_registry(args, config)
+except ValueError as error:
+    parser.error(str(error))
+
+if not args.model_path:
+    parser.error("--model_path is required via CLI, stage_1_prepare, or --model_key.")
+if args.n_shards < 1 or not 1 <= args.shard_idx <= args.n_shards:
+    parser.error("--n_shards must be >= 1 and --shard_idx must be in 1..n_shards.")
 
 target_split = str(args.dataset_split).lower()
 
@@ -182,10 +194,15 @@ try:
     if trust_remote_code:
         print("Using trust_remote_code=True for Qwen3 model loading compatibility.")
 
+    attention_implementation = _attention_implementation(device)
+    print(
+        "Attention implementation: "
+        + (attention_implementation or "Transformers default (FlashAttention not required)")
+    )
     model = AutoModel.from_pretrained(
         args.model_path,
-        dtype=torch.bfloat16 if device != 'cpu' else torch.float32,
-        attn_implementation="flash_attention_2" if device != 'cpu' else None,
+        dtype=torch.bfloat16 if device != "cpu" else torch.float32,
+        attn_implementation=attention_implementation,
         device_map=device,
         trust_remote_code=trust_remote_code,
     )
